@@ -325,23 +325,34 @@ function draw(){
     ctx.globalAlpha = 1;
   }
 
-  // labels: focus, its neighbours, hovered, and hazards
-  ctx.font = '11.5px "Inter","Helvetica Neue",Arial,sans-serif';
+  // labels, most important first, skipping any that would collide
   ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  const cand = [];
   for (const n of live){
     const isF = n.i===focusIdx, isH = n.i===hoverIdx;
     const nb = hi!==null && near.has(n.i);
-    const show = isF || isH || nb || (n.kind==="warning" && cam.k>.5)
-              || (focusIdx===null && n.deg>=11);
-    if (!show) continue;
-    const p = toScreen(n), r = rad(n)*Math.min(1.5,Math.max(.62,cam.k));
-    const txt = short(n, isF?46:30);
-    ctx.globalAlpha = fade(n,now) * (isF?1:isH?.96:nb?.80:.55);
-    ctx.font = (isF?'600 13px ':'11.5px ')+'"Inter","Helvetica Neue",Arial,sans-serif';
-    const w = ctx.measureText(txt).width, y = p.y + r*(isF?1.32:1) + 13;
-    ctx.fillStyle = "rgba(8,11,17,.80)";
-    ctx.fillRect(p.x-w/2-5, y-8.5, w+10, 17);
-    ctx.fillStyle = n.kind==="warning" ? "#ff8a80" : isF ? "#ffffff" : "#9fb2c8";
+    const hub = (n.kind==="warning" && cam.k>.5) || (focusIdx===null && n.deg>=11);
+    if (!(isF||isH||nb||hub)) continue;
+    cand.push({n, isF, isH, nb, pr: isF?3 : isH?2 : nb?1 : 0});
+  }
+  cand.sort((x,y)=>y.pr-x.pr);
+  const placed = [];
+  for (const c of cand){
+    const n = c.n, p = toScreen(n);
+    if (p.x < -60 || p.x > W+60 || p.y < -40 || p.y > H+40) continue;
+    const r = rad(n)*Math.min(1.5,Math.max(.62,cam.k));
+    const txt = short(n, c.isF?46:30);
+    ctx.font = (c.isF?'600 13px ':'11.5px ')+'"Inter","Helvetica Neue",Arial,sans-serif';
+    const w = ctx.measureText(txt).width;
+    const y = p.y + r*(c.isF?1.32:1) + 13;
+    const box = {x0:p.x-w/2-5, y0:y-8.5, x1:p.x+w/2+5, y1:y+8.5};
+    if (placed.some(q => box.x0 < q.x1 && box.x1 > q.x0 && box.y0 < q.y1 && box.y1 > q.y0))
+      continue;                                   // something better is already there
+    placed.push(box);
+    ctx.globalAlpha = fade(n,now) * (c.isF?1 : c.isH?.96 : c.nb?.80 : .55);
+    ctx.fillStyle = "rgba(8,11,17,.82)";
+    ctx.fillRect(box.x0, box.y0, box.x1-box.x0, box.y1-box.y0);
+    ctx.fillStyle = n.kind==="warning" ? "#ff8a80" : c.isF ? "#ffffff" : "#9fb2c8";
     ctx.fillText(txt, p.x, y);
     ctx.globalAlpha = 1;
   }
