@@ -343,11 +343,17 @@ function draw(){
     const r = rad(n)*Math.min(1.5,Math.max(.62,cam.k));
     const txt = short(n, c.isF?46:30);
     ctx.font = (c.isF?'600 13px ':'11.5px ')+'"Inter","Helvetica Neue",Arial,sans-serif';
-    const w = ctx.measureText(txt).width;
-    const y = p.y + r*(c.isF?1.32:1) + 13;
-    const box = {x0:p.x-w/2-5, y0:y-8.5, x1:p.x+w/2+5, y1:y+8.5};
-    if (placed.some(q => box.x0 < q.x1 && box.x1 > q.x0 && box.y0 < q.y1 && box.y1 > q.y0))
-      continue;                                   // something better is already there
+    const w = ctx.measureText(txt).width, PAD = 4;
+    const hit = b => placed.some(q => b.x0-PAD < q.x1 && b.x1+PAD > q.x0
+                                   && b.y0-PAD < q.y1 && b.y1+PAD > q.y0);
+    let box = null;
+    for (const dy of [ r*(c.isF?1.32:1)+13, -(r*(c.isF?1.32:1)+13) ]){   // below, else above
+      const yy = p.y + dy;
+      const t = {x0:p.x-w/2-5, y0:yy-8.5, x1:p.x+w/2+5, y1:yy+8.5};
+      if (!hit(t)){ box = t; break; }
+    }
+    if (!box) continue;                           // no room; something better is there
+    const y = (box.y0+box.y1)/2;
     placed.push(box);
     ctx.globalAlpha = fade(n,now) * (c.isF?1 : c.isH?.96 : c.nb?.80 : .55);
     ctx.fillStyle = "rgba(8,11,17,.82)";
