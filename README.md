@@ -50,11 +50,24 @@ manual appears anywhere in this repository.
 
 ## Layout
 
-Fruchterman–Reingold, hand-written, no dependency. Repulsion `k²/d`, attraction
-`d²/k`, per-tick displacement capped by a cooling temperature, positions
-confined to a circular frame. The frame is load-bearing: the graph is sparse,
-so most node pairs only repel, and total repulsion grows with node count while
-centre gravity is only linear. Without it the layout drifts apart indefinitely.
+Fruchterman–Reingold forces (repulsion `k²/d`, attraction `d²/k`), integrated
+as damped velocity under a cooling heat that reaches a full stop, with positions
+confined to a circular frame. Hand-written, no dependency. Three details are
+load-bearing:
+
+- **The frame.** The graph is sparse, so most node pairs only repel, and total
+  repulsion grows with node count while centre gravity is only linear. Without
+  the frame the layout drifts apart indefinitely.
+- **Damped velocity, not capped steps.** An earlier version moved each node a
+  capped distance straight down the force every tick. Whenever equilibrium was
+  nearer than the cap the node overshot and came back next tick: the clicked
+  node reversed direction on 412 of 420 frames, which read as trembling.
+- **The clicked node is not pushed.** It glides to the centre on its own and
+  everything else arranges around it, so the thing you just clicked is the one
+  thing that is guaranteed to stay still.
+
+After a click, visible motion stops in about 1.2 seconds and the simulation
+then stops computing altogether.
 
 ## Rebuilding
 

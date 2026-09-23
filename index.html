@@ -148,7 +148,7 @@ const ORDER = ["warns","hierarchy","crossref","shared_hazard","lsa_similar"];
 
 const N = DATA.nodes.map((d,i)=>({...d, i,
   title: (d.title||"").replace(/^\[WARN\]\s*/, ""),   // R node ids carry this prefix
-  x:0, y:0, dx:0, dy:0, born:0, on:false}));
+  x:0, y:0, vx:0, vy:0, fx:0, fy:0, born:0, on:false}));
 const E = DATA.edges.map(e=>({s:e.s, t:e.t, type:e.type}));
 const adj = N.map(()=>[]);
 E.forEach((e,k)=>{ adj[e.s].push({o:e.t,k,type:e.type}); adj[e.t].push({o:e.s,k,type:e.type}); });
@@ -157,7 +157,7 @@ const off = new Set();                       // edge types toggled off
 let focusIdx = null, trail = [], hoverIdx = null;
 let vis = new Set(), visE = [];
 let cam = {x:0, y:0, k:1}, camT = {x:0, y:0, k:1};
-let temp = 1, dragging = null, panning = null;
+let alpha = 1, dragging = null, pending = null, panning = null, autoFit = true;
 
 const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
 const tip = document.getElementById("tip");
@@ -179,6 +179,7 @@ function showWhole(){
   commit(true);
 }
 function focusOn(i, push=true){
+  if (push && i === focusIdx) return;
   if (push && focusIdx !== null && focusIdx !== i) trail.push(focusIdx);
   focusIdx = i;
   const s = new Set([i]);
@@ -201,28 +202,34 @@ function commit(whole){
         const a = Math.random()*Math.PI*2, rr = 380*Math.sqrt(Math.random());
         n.x = Math.cos(a)*rr; n.y = Math.sin(a)*rr;
       }
-      n.dx = n.dy = 0;
+      n.vx = n.vy = 0;
     }
   });
   visE = E.filter(e => !off.has(e.type) && vis.has(e.s) && vis.has(e.t));
-  temp = whole ? 1 : .85;
+  alpha = whole ? 1 : .8; autoFit = true;
   renderPanel(); renderLegend(); status();
-  setTimeout(fit, whole ? 420 : 360);
 }
 
 /* ============================ forces ============================ */
-/* Fruchterman-Reingold. Displacement per tick is capped by a cooling
-   temperature, so the layout cannot run away however many nodes are on. */
+/* Fruchterman-Reingold forces, integrated as damped velocity, with the heat
+   (alpha) cooling to a full stop.
+
+   The first version moved each node a capped distance per tick straight down
+   the force. Whenever equilibrium was nearer than the cap the node overshot,
+   and next tick came back: the clicked node reversed direction on 412 of 420
+   frames. Velocity with friction cannot do that, and cooling to zero means the
+   map actually comes to rest instead of shimmering. */
+const ALPHA_MIN = 0.002, ALPHA_DECAY = 0.03;   // ~3.5 s from a click to rest
+const ETA = 0.04, KEEP = 0.60, VMAX = 10;      // step size, velocity kept per tick, speed cap
 function step(){
+  if (alpha < ALPHA_MIN && !dragging) return;  // at rest: nothing moves at all
+  alpha = Math.max(dragging ? 0.25 : 0, alpha*(1-ALPHA_DECAY));
   const live = N.filter(n=>n.on);
   const n = live.length; if(!n) return;
   const AREA = focusIdx===null ? 760*760 : 520*520;
-  const k    = Math.sqrt(AREA/n);              // natural spacing
-  const t    = Math.max(0.30, temp*Math.sqrt(AREA)/16);
-  temp = Math.max(0.010, temp*0.982);
+  const k = Math.sqrt(AREA/n), R = Math.sqrt(AREA)/2;
 
-  for (const p of live){ p.dx = 0; p.dy = 0; }
-
+  for (const p of live){ p.fx = 0; p.fy = 0; }
   for (let a=0;a<n;a++){                        // repulsion: k^2/d
     const p = live[a];
     for (let b=a+1;b<n;b++){
@@ -230,31 +237,36 @@ function step(){
       let dx = p.x-q.x, dy = p.y-q.y, d = Math.hypot(dx,dy);
       if (d < .01){ dx = Math.random()-.5; dy = Math.random()-.5; d = .01; }
       const f = (k*k)/(d*d);
-      p.dx += dx*f; p.dy += dy*f;
-      q.dx -= dx*f; q.dy -= dy*f;
+      p.fx += dx*f; p.fy += dy*f; q.fx -= dx*f; q.fy -= dy*f;
     }
   }
   for (const e of visE){                        // attraction: d^2/k
     const p = N[e.s], q = N[e.t];
-    let dx = p.x-q.x, dy = p.y-q.y, d = Math.hypot(dx,dy);
+    const dx = p.x-q.x, dy = p.y-q.y, d = Math.hypot(dx,dy);
     if (d < .01) continue;
     const w = e.type==="hierarchy" ? 1.45 : e.type==="warns" ? 1.20 : 0.80;
     const f = (d/k)*w;
-    p.dx -= dx*f; p.dy -= dy*f;
-    q.dx += dx*f; q.dy += dy*f;
+    p.fx -= dx*f; p.fy -= dy*f; q.fx += dx*f; q.fy += dy*f;
   }
-  const R = Math.sqrt(AREA)/2;                  // the frame FR confines to
   for (const p of live){
-    const g = (focusIdx!==null && p.i===focusIdx) ? 0.26 : 0.055;
-    p.dx -= p.x*g; p.dy -= p.y*g;
-    if (dragging===p) continue;
-    const d = Math.hypot(p.dx,p.dy) || 1;
-    const m = Math.min(d, t);                   // temperature cap
-    p.x += p.dx/d*m; p.y += p.dy/d*m;
-    // total repulsion grows with n while gravity is only linear, so a sparse
-    // graph would drift outward for ever. Confine it to the frame.
-    const rr = Math.hypot(p.x,p.y);
-    if (rr > R){ p.x = p.x/rr*R; p.y = p.y/rr*R; }
+    if (dragging===p){ p.vx = p.vy = 0; continue; }
+    if (focusIdx!==null && p.i===focusIdx){      // the anchor glides to centre; it is
+      p.x -= p.x*0.14; p.y -= p.y*0.14;           // never pushed, so it cannot oscillate
+      p.vx = p.vy = 0; continue;
+    }
+    p.fx -= p.x*0.055; p.fy -= p.y*0.055;       // gravity
+    p.vx = (p.vx + p.fx*ETA*alpha)*KEEP;
+    p.vy = (p.vy + p.fy*ETA*alpha)*KEEP;
+    const sp = Math.hypot(p.vx,p.vy);
+    if (sp > VMAX){ p.vx *= VMAX/sp; p.vy *= VMAX/sp; }
+    p.x += p.vx; p.y += p.vy;
+    const rr = Math.hypot(p.x,p.y);             // sparse graph: confine to the frame,
+    if (rr > R){                                // sliding along it rather than bouncing
+      const ux = p.x/rr, uy = p.y/rr;
+      p.x = ux*R; p.y = uy*R;
+      const out = p.vx*ux + p.vy*uy;
+      if (out > 0){ p.vx -= out*ux; p.vy -= out*uy; }
+    }
   }
 }
 const rad = n => n.kind==="warning" ? 7.2 + Math.min(n.deg,14)*.30
@@ -370,7 +382,11 @@ const hexA = (h,a)=>{ const c=h.replace("#",""); const v=parseInt(c,16);
 const short = (n,m)=>{ const t = n.kind==="warning" ? n.title : (n.num? n.num+" "+n.title : n.title);
   return t.length>m ? t.slice(0,m-1).trimEnd()+"…" : t; };
 
-function loop(){ step(); draw(); requestAnimationFrame(loop); }
+function loop(){
+  step();
+  if (autoFit){ fit(); if (alpha < 0.05) autoFit = false; }
+  draw(); requestAnimationFrame(loop);
+}
 
 /* ============================ search ============================ */
 function score(n,q){
@@ -481,8 +497,14 @@ function pick(mx,my){
 }
 cv.addEventListener("mousemove", ev=>{
   const r = cv.getBoundingClientRect(), mx = ev.clientX-r.left, my = ev.clientY-r.top;
-  if (dragging){ dragging.x = (mx-cam.x)/cam.k; dragging.y = (my-cam.y)/cam.k;
-                 temp = Math.max(temp,.22); return; }
+  if (pending && !dragging && Math.hypot(mx-pending.sx, my-pending.sy) > 4){
+    dragging = pending.n; autoFit = false;
+  }
+  if (dragging){
+    dragging.x = (mx-cam.x)/cam.k + pending.ox;
+    dragging.y = (my-cam.y)/cam.k + pending.oy;
+    alpha = Math.max(alpha, .25); return;
+  }
   if (panning){ camT.x += mx-panning.x; camT.y += my-panning.y;
                 cam.x += mx-panning.x; cam.y += my-panning.y;
                 panning = {x:mx,y:my}; return; }
@@ -501,20 +523,17 @@ cv.addEventListener("mousemove", ev=>{
 cv.addEventListener("mousedown", ev=>{
   const r = cv.getBoundingClientRect(), mx = ev.clientX-r.left, my = ev.clientY-r.top;
   const n = pick(mx,my);
-  if (n){ dragging = n; cv.style.cursor="grabbing"; }
-  else { panning = {x:mx,y:my}; cv.style.cursor="grabbing"; }
+  if (n){ pending = {n, sx:mx, sy:my, ox:n.x-(mx-cam.x)/cam.k, oy:n.y-(my-cam.y)/cam.k}; }
+  else { panning = {x:mx,y:my}; autoFit = false; cv.style.cursor="grabbing"; }
 });
-window.addEventListener("mouseup", ev=>{
-  if (dragging){
-    const r = cv.getBoundingClientRect();
-    const p = toScreen(dragging);
-    if (Math.hypot(p.x-(ev.clientX-r.left), p.y-(ev.clientY-r.top)) < 6) focusOn(dragging.i);
-  }
-  dragging = null; panning = null; cv.style.cursor = "grab";
+window.addEventListener("mouseup", ()=>{
+  if (pending && !dragging) focusOn(pending.n.i);   // a click, not a drag
+  pending = null; dragging = null; panning = null; cv.style.cursor = "grab";
 });
 cv.addEventListener("wheel", ev=>{
   ev.preventDefault();
   const r = cv.getBoundingClientRect(), mx = ev.clientX-r.left, my = ev.clientY-r.top;
+  autoFit = false;
   const k = Math.max(.18, Math.min(3.4, camT.k * (ev.deltaY<0 ? 1.12 : 1/1.12)));
   camT.x = mx - (mx-camT.x)*(k/camT.k); camT.y = my - (my-camT.y)*(k/camT.k); camT.k = k;
 }, {passive:false});
