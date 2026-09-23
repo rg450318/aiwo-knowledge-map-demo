@@ -68,6 +68,13 @@ this repository.
 | Breadcrumbs | Retrace your path; `Back` steps up one. |
 | Drag / scroll | Move a node, pan the background, zoom, `Fit` to reframe. |
 
+## On a phone
+
+The page scrolls: search at the top, the map under it at two-thirds of the screen, then the
+opened section's links and the legend. Tap a dot to open it, drag to pan, pinch to zoom. After
+choosing a search result or a link below the map, the result list folds away and the map scrolls
+back into view.
+
 ## Layout
 
 Fruchterman–Reingold forces (repulsion `k²/d`, attraction `d²/k`), integrated as

@@ -97,10 +97,29 @@
   .btn:hover{color:var(--ink);border-color:#2a3b50}
   #status{position:absolute;right:18px;bottom:15px;font-size:10.5px;color:var(--faint);
     text-align:right;line-height:1.5}
+  canvas{touch-action:none}          /* the map handles its own pan and pinch */
+  .hit.more .htitle{color:var(--mute)}
+  /* Phones and narrow windows: the page scrolls. Header and search, then the map
+     at two-thirds of the screen, then the section's links and the legend. */
   @media (max-width:820px){
-    #app{flex-direction:column}
-    #panel{width:100%;height:46%;border-right:none;border-bottom:1px solid var(--hair)}
-    #stage{height:54%}
+    html,body{height:auto;overflow:auto}
+    #app{display:flex;flex-direction:column;height:auto}
+    #panel{display:contents}
+    .phead{order:1;padding:14px 16px 12px}
+    .ptitle{font-size:18px}
+    .psub{font-size:11px;margin-top:5px}
+    .manuals{margin-top:10px}
+    .searchwrap{order:2}
+    #hits{max-height:34vh}
+    .hint{margin-top:6px}
+    #stage{order:3;flex:none;height:64vh;height:64svh;min-height:340px;
+      border-top:1px solid var(--hair);border-bottom:1px solid var(--hair)}
+    .pbody{order:4;flex:none;overflow:visible;padding:16px 16px 8px}
+    .legend{order:5;padding:12px 16px}
+    .foot{order:6;padding:12px 16px 22px}
+    #bar{left:10px;top:10px;gap:6px}
+    .btn{font-size:10.5px;padding:5px 9px}
+    #status{display:none}
   }
 </style>
 </head>
@@ -173,6 +192,10 @@ let focusIdx = null, trail = [], hoverIdx = null;
 let vis = new Set(), visE = [];
 let cam = {x:0, y:0, k:1}, camT = {x:0, y:0, k:1};
 let alpha = 1, dragging = null, pending = null, panning = null, autoFit = true;
+let ptrType = "mouse", hitsOpen = true;
+const ptrs = new Map(); let pinch = null, pinchDone = false;
+const narrow = () => matchMedia("(max-width: 820px)").matches;
+const TAP = matchMedia("(pointer: coarse)").matches ? "tap" : "click";
 
 const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
 const tip = document.getElementById("tip");
@@ -185,7 +208,7 @@ function resize(){
   cv.width = W*DPR; cv.height = H*DPR;
   ctx.setTransform(DPR,0,0,DPR,0,0);
 }
-window.addEventListener("resize", ()=>{ resize(); });
+window.addEventListener("resize", ()=>{ resize(); fit(); });
 
 /* ============================ manuals ============================ */
 function loadManual(m){
@@ -195,6 +218,12 @@ function loadManual(m){
   vis = new Set(); visE = [];
   try { history.replaceState(null, "", "#" + MANUALS[m].key); } catch(e) {}
   renderManuals(); header(); showWhole(); runSearch();
+}
+function afterPick(){
+  if (!narrow()) return;
+  hitsOpen = false; runSearch();
+  const st = document.getElementById("stage"), r = st.getBoundingClientRect();
+  if (r.top < 0 || r.top > innerHeight * 0.4) st.scrollIntoView({behavior: "smooth", block: "start"});
 }
 function renderManuals(){
   const box = document.getElementById("manuals");
@@ -330,10 +359,12 @@ function fit(){
   let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
   live.forEach(n=>{ x0=Math.min(x0,n.x); y0=Math.min(y0,n.y);
                     x1=Math.max(x1,n.x); y1=Math.max(y1,n.y); });
-  const pad = 96, bw = Math.max(x1-x0,1), bh = Math.max(y1-y0,1);
-  camT.k = Math.max(.25, Math.min(2.1, Math.min((W-pad*2)/bw, (H-pad*2)/bh)));
+  const small = Math.min(W, H) < 560;
+  const px = small ? 46 : 96, py = small ? 30 : 96, top = small ? 44 : 0;   // top: the toolbar
+  const bw = Math.max(x1-x0,1), bh = Math.max(y1-y0,1);
+  camT.k = Math.max(.15, Math.min(2.1, Math.min((W-px*2)/bw, (H-top-py*2)/bh)));
   camT.x = W/2 - (x0+x1)/2*camT.k;
-  camT.y = H/2 - (y0+y1)/2*camT.k;
+  camT.y = top + (H-top)/2 - (y0+y1)/2*camT.k;
 }
 const toScreen = n => ({x:n.x*cam.k+cam.x, y:n.y*cam.k+cam.y});
 
@@ -436,7 +467,7 @@ const short = (n,m)=>{ const t = n.kind==="warning" ? n.title : (n.num? n.num+" 
 
 function loop(){
   step();
-  if (autoFit){ fit(); if (alpha < 0.05) autoFit = false; }
+  if (autoFit){ fit(); if (alpha < ALPHA_MIN) autoFit = false; }
   draw(); requestAnimationFrame(loop);
 }
 
@@ -470,6 +501,13 @@ function runSearch(){
       {k, c: m.data.nodes.filter(n=>score(n,q)>=12).length}).filter(o=>o && o.c);
   const also = others.length ? `<div class="also">Also in ${others.map(o=>
       `<span class="mpill" data-m="${o.k}">${esc(MANUALS[o.k].short)} &middot; ${o.c}</span>`).join("")}</div>` : "";
+  if (!hitsOpen && hits.length){                 // folded (narrow screens, after a pick)
+    box.innerHTML = `<div class="hit more"><span class="hnum">&#9662;</span>`
+      + `<span class="htitle">${hits.length} match${hits.length===1?"":"es"} \u00b7 show</span></div>` + also;
+    box.querySelector(".more").onclick = ()=>{ hitsOpen = true; runSearch(); };
+    [...box.querySelectorAll(".also .mpill")].forEach(el=> el.onclick = ()=>loadManual(+el.dataset.m));
+    return;
+  }
   box.innerHTML = (hits.length ? hits.map(h=>
     `<div class="hit${h.n.kind==="warning"?" warn":""}" data-i="${h.n.i}">
        <span class="hnum">${h.n.kind==="warning"?"&#9888;":(h.n.num||"")}</span>
@@ -477,7 +515,7 @@ function runSearch(){
     : '<div class="hint">Nothing in this manual matches that.</div>') + also;
   [...box.querySelectorAll(".hit")].forEach(el=>
     el.onclick = ()=>{ focusOn(+el.dataset.i); document.getElementById("hint").textContent =
-      "Click any dot to open the map behind it."; });
+      `${TAP[0].toUpperCase() + TAP.slice(1)} any dot to open the map behind it.`; afterPick(); });
   [...box.querySelectorAll(".also .mpill")].forEach(el=> el.onclick = ()=>loadManual(+el.dataset.m));
 }
 const esc = s => s.replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -488,7 +526,7 @@ function renderPanel(){
   if (focusIdx === null){
     b.innerHTML = (nHaz() ? "" : HAZ_NOTE) + convNote() + `<div class="empty">Showing the whole manual &mdash;
       ${DATA.meta.n_nodes} nodes and ${DATA.meta.n_edges} typed links.<br><br>
-      Search for a word above, or click any dot, to open the local map around it.</div>`;
+      Search for a word above, or ${TAP} any dot, to open the local map around it.</div>`;
     return;
   }
   const n = N[focusIdx];
@@ -520,7 +558,7 @@ function renderPanel(){
     html += '<div class="empty">No links of the enabled types.</div>';
 
   b.innerHTML = html;
-  [...b.querySelectorAll(".lnk")].forEach(el => el.onclick = ()=>focusOn(+el.dataset.i));
+  [...b.querySelectorAll(".lnk")].forEach(el => el.onclick = ()=>{ focusOn(+el.dataset.i); afterPick(); });
   [...b.querySelectorAll(".crumb")].forEach(el => el.onclick = ()=>{
     const abs = trail.length-Math.min(4,trail.length)+(+el.dataset.b);
     const target = trail[abs]; trail = trail.slice(0,abs); focusOn(target,false);
@@ -549,24 +587,13 @@ function pick(mx,my){
   let best=null, bd=1e9;
   for (const n of N){ if(!n.on) continue;
     const p = toScreen(n), d = Math.hypot(p.x-mx, p.y-my);
-    const r = rad(n)*Math.min(1.5,Math.max(.62,cam.k))+9;
+    const r = rad(n)*Math.min(1.5,Math.max(.62,cam.k)) + (ptrType==="touch" ? 20 : 9);
     if (d<r && d<bd){ bd=d; best=n; } }
   return best;
 }
-cv.addEventListener("mousemove", ev=>{
-  const r = cv.getBoundingClientRect(), mx = ev.clientX-r.left, my = ev.clientY-r.top;
-  if (pending && !dragging && Math.hypot(mx-pending.sx, my-pending.sy) > 4){
-    dragging = pending.n; autoFit = false;
-  }
-  if (dragging){
-    dragging.x = (mx-cam.x)/cam.k + pending.ox;
-    dragging.y = (my-cam.y)/cam.k + pending.oy;
-    alpha = Math.max(alpha, .25); return;
-  }
-  if (panning){ camT.x += mx-panning.x; camT.y += my-panning.y;
-                cam.x += mx-panning.x; cam.y += my-panning.y;
-                panning = {x:mx,y:my}; return; }
-  const n = pick(mx,my);
+const local = ev => { const r = cv.getBoundingClientRect(); return {x: ev.clientX - r.left, y: ev.clientY - r.top}; };
+function hover(p){
+  const n = pick(p.x, p.y);
   hoverIdx = n ? n.i : null;
   cv.style.cursor = n ? "pointer" : "grab";
   if (n){
@@ -574,20 +601,62 @@ cv.addEventListener("mousemove", ev=>{
     tip.innerHTML = `<span class="tnum">${t} &middot; ${n.deg} links</span>${esc(n.title)}` +
       ((n.terms&&n.terms.length)?`<span class="tterms">${esc(n.terms.slice(0,7).join(" · "))}</span>`:"");
     tip.style.opacity = 1;
-    tip.style.left = Math.min(W-280, mx+16)+"px";
-    tip.style.top  = Math.min(H-92, my+14)+"px";
+    tip.style.left = Math.min(W-280, p.x+16)+"px";
+    tip.style.top  = Math.min(H-92, p.y+14)+"px";
   } else tip.style.opacity = 0;
+}
+cv.addEventListener("pointerdown", ev=>{
+  ptrType = ev.pointerType || "mouse";
+  try { cv.setPointerCapture(ev.pointerId); } catch(e) {}
+  const p = local(ev); ptrs.set(ev.pointerId, p);
+  if (ptrs.size === 2){                            // second finger: pinch, not a tap or drag
+    pending = null; dragging = null; panning = null; autoFit = false; tip.style.opacity = 0;
+    const [q1, q2] = [...ptrs.values()];
+    const mx = (q1.x+q2.x)/2, my = (q1.y+q2.y)/2;
+    pinch = {d: Math.max(Math.hypot(q1.x-q2.x, q1.y-q2.y), 1), k: cam.k,
+             wx: (mx-cam.x)/cam.k, wy: (my-cam.y)/cam.k};
+    return;
+  }
+  if (ptrs.size > 2 || pinchDone) return;
+  const n = pick(p.x, p.y);
+  if (n) pending = {n, sx:p.x, sy:p.y, ox:n.x-(p.x-cam.x)/cam.k, oy:n.y-(p.y-cam.y)/cam.k};
+  else { panning = {x:p.x, y:p.y}; autoFit = false; cv.style.cursor = "grabbing"; }
 });
-cv.addEventListener("mousedown", ev=>{
-  const r = cv.getBoundingClientRect(), mx = ev.clientX-r.left, my = ev.clientY-r.top;
-  const n = pick(mx,my);
-  if (n){ pending = {n, sx:mx, sy:my, ox:n.x-(mx-cam.x)/cam.k, oy:n.y-(my-cam.y)/cam.k}; }
-  else { panning = {x:mx,y:my}; autoFit = false; cv.style.cursor="grabbing"; }
+cv.addEventListener("pointermove", ev=>{
+  const p = local(ev);
+  if (ptrs.has(ev.pointerId)) ptrs.set(ev.pointerId, p);
+  if (pinch && ptrs.size >= 2){                    // zoom about the fingers, and follow them
+    const [q1, q2] = [...ptrs.values()];
+    const mx = (q1.x+q2.x)/2, my = (q1.y+q2.y)/2;
+    const k = Math.max(.15, Math.min(3.4, pinch.k * Math.hypot(q1.x-q2.x, q1.y-q2.y) / pinch.d));
+    camT.k = cam.k = k;
+    camT.x = cam.x = mx - pinch.wx*k;
+    camT.y = cam.y = my - pinch.wy*k;
+    return;
+  }
+  const slop = ptrType === "touch" ? 10 : 4;
+  if (pending && !dragging && Math.hypot(p.x-pending.sx, p.y-pending.sy) > slop){
+    dragging = pending.n; autoFit = false;
+  }
+  if (dragging){
+    dragging.x = (p.x-cam.x)/cam.k + pending.ox;
+    dragging.y = (p.y-cam.y)/cam.k + pending.oy;
+    alpha = Math.max(alpha, .25); return;
+  }
+  if (panning){ camT.x += p.x-panning.x; camT.y += p.y-panning.y;
+                cam.x += p.x-panning.x; cam.y += p.y-panning.y;
+                panning = {x:p.x, y:p.y}; return; }
+  if ((ev.pointerType || "mouse") === "mouse") hover(p);   // no hover on touch
 });
-window.addEventListener("mouseup", ()=>{
-  if (pending && !dragging) focusOn(pending.n.i);   // a click, not a drag
+function pointerEnd(ev){
+  ptrs.delete(ev.pointerId);
+  if (pinch){ if (ptrs.size < 2){ pinch = null; pinchDone = ptrs.size > 0; } return; }
+  if (pinchDone){ if (ptrs.size === 0) pinchDone = false; return; }
+  if (pending && !dragging && ev.type === "pointerup") focusOn(pending.n.i);   // a tap or click, not a drag
   pending = null; dragging = null; panning = null; cv.style.cursor = "grab";
-});
+}
+cv.addEventListener("pointerup", pointerEnd);
+cv.addEventListener("pointercancel", pointerEnd);
 cv.addEventListener("wheel", ev=>{
   ev.preventDefault();
   const r = cv.getBoundingClientRect(), mx = ev.clientX-r.left, my = ev.clientY-r.top;
@@ -595,9 +664,10 @@ cv.addEventListener("wheel", ev=>{
   const k = Math.max(.18, Math.min(3.4, camT.k * (ev.deltaY<0 ? 1.12 : 1/1.12)));
   camT.x = mx - (mx-camT.x)*(k/camT.k); camT.y = my - (my-camT.y)*(k/camT.k); camT.k = k;
 }, {passive:false});
-cv.addEventListener("mouseleave", ()=>{ tip.style.opacity=0; hoverIdx=null; });
+cv.addEventListener("pointerleave", ev=>{ if ((ev.pointerType||"mouse")==="mouse"){ tip.style.opacity=0; hoverIdx=null; } });
 
-document.getElementById("q").addEventListener("input", runSearch);
+document.getElementById("q").addEventListener("input", ()=>{ hitsOpen = true; runSearch(); });
+document.getElementById("q").addEventListener("focus", ()=>{ if (!hitsOpen){ hitsOpen = true; runSearch(); } });
 document.getElementById("q").addEventListener("keydown", ev=>{
   if (ev.key==="Enter"){ const f = document.querySelector(".hit"); if(f) f.click(); }
 });
@@ -614,9 +684,11 @@ resize();
 { // open whatever view the address names
   const [key, num, q] = location.hash.replace(/^#/, "").split("/").map(x => decodeURIComponent(x || ""));
   loadManual(Math.max(0, MANUALS.findIndex(m => m.key === key)));
+  document.getElementById("hint").textContent = `Search the manual, then ${TAP} any dot to open the map behind it.`;
   if (q){ document.getElementById("q").value = q; runSearch(); }
   const n = num && N.find(n => n.kind === "section" && n.num === num);
   if (n) focusOn(n.i);
+  if (n && q && narrow()){ hitsOpen = false; runSearch(); }   // a shared view link: lead with the map
   if (q) setHash((num ? encodeURIComponent(num) : "") + "/" + encodeURIComponent(q));
 }
 loop();
