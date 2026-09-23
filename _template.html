@@ -25,6 +25,15 @@
   .eyebrow{font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--faint)}
   .ptitle{font-family:var(--serif);font-size:21px;margin-top:7px;line-height:1.2}
   .psub{font-size:11.5px;color:var(--mute);margin-top:7px;line-height:1.45}
+  .manuals{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+  .mpill{font-size:11px;padding:5px 10px;border-radius:20px;border:1px solid var(--hair);
+    background:#0f1620;color:var(--mute);cursor:pointer;user-select:none;white-space:nowrap}
+  .mpill:hover{color:var(--ink);border-color:#2a3b50}
+  .mpill.on{background:#15314a;border-color:#2f6a95;color:#e8f3ff}
+  .also{margin-top:9px;font-size:11px;color:var(--faint);display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+  .also .mpill{font-size:10.5px;padding:3px 9px}
+  .note{font-size:11px;color:#d7b27a;background:rgba(232,163,61,.07);border:1px solid rgba(232,163,61,.24);
+    border-radius:7px;padding:8px 10px;margin-bottom:13px;line-height:1.5}
 
   .searchwrap{padding:16px 20px;border-bottom:1px solid var(--hair);position:relative}
   #q{width:100%;background:var(--bg2);border:1px solid var(--hair);border-radius:8px;
@@ -102,12 +111,13 @@
       <div class="eyebrow">AiWo &middot; Task 2.4</div>
       <div class="ptitle">Knowledge map</div>
       <div class="psub" id="psub"></div>
+      <div class="manuals" id="manuals"></div>
     </div>
 
     <div class="searchwrap">
       <span class="sicon">&#9906;</span>
       <input id="q" type="text" autocomplete="off" spellcheck="false"
-             placeholder="Type a word &mdash; sawing, hydraulic, chain&hellip;">
+             placeholder="Type a word &mdash; sawing, hydraulic, fuel&hellip;">
       <div id="hits"></div>
       <div class="hint" id="hint">Search the manual, then click any dot to open the map behind it.</div>
     </div>
@@ -133,7 +143,7 @@
 </div>
 
 <script>
-const DATA = /*__DATA__*/;
+const MANUALS = /*__MANUALS__*/;
 
 /* ============================ setup ============================ */
 const EDGE = {
@@ -145,12 +155,18 @@ const EDGE = {
 };
 const ORDER = ["warns","hierarchy","crossref","shared_hazard","lsa_similar"];
 
-const N = DATA.nodes.map((d,i)=>({...d, i,
-  title: (d.title||"").replace(/^\[WARN\]\s*/, ""),   // R node ids carry this prefix
-  x:0, y:0, vx:0, vy:0, fx:0, fy:0, born:0, on:false}));
-const E = DATA.edges.map(e=>({s:e.s, t:e.t, type:e.type}));
-const adj = N.map(()=>[]);
-E.forEach((e,k)=>{ adj[e.s].push({o:e.t,k,type:e.type}); adj[e.t].push({o:e.s,k,type:e.type}); });
+let cur = -1, DATA, N = [], E = [], adj = [];
+// R node ids carry a "[WARN] " prefix, and some headings wrap onto a second
+// line, leaving a dangling "(optional" or "(machine equipped with".
+const cleanTitle = t => (t||"").replace(/^\[WARN\]\s*/, "").replace(/\s*\([^)]*$/, "");
+function build(){
+  N = DATA.nodes.map((d,i)=>({...d, i, title: cleanTitle(d.title),
+        x:0, y:0, vx:0, vy:0, fx:0, fy:0, born:0, on:false}));
+  E = DATA.edges.map(e=>({s:e.s, t:e.t, type:e.type}));
+  adj = N.map(()=>[]);
+  E.forEach((e,k)=>{ adj[e.s].push({o:e.t,k,type:e.type}); adj[e.t].push({o:e.s,k,type:e.type}); });
+}
+const nHaz = () => N.filter(n=>n.kind==="warning").length;
 
 const off = new Set();                       // edge types toggled off
 let focusIdx = null, trail = [], hoverIdx = null;
@@ -170,6 +186,36 @@ function resize(){
   ctx.setTransform(DPR,0,0,DPR,0,0);
 }
 window.addEventListener("resize", ()=>{ resize(); });
+
+/* ============================ manuals ============================ */
+function loadManual(m){
+  if (m === cur) return;
+  cur = m; DATA = MANUALS[m].data; build();
+  focusIdx = null; trail = []; hoverIdx = null; pending = null; dragging = null;
+  vis = new Set(); visE = [];
+  try { history.replaceState(null, "", "#" + MANUALS[m].key); } catch(e) {}
+  renderManuals(); header(); showWhole(); runSearch();
+}
+function renderManuals(){
+  const box = document.getElementById("manuals");
+  box.innerHTML = MANUALS.map((m,i)=>
+    `<span class="mpill${i===cur?" on":""}" data-m="${i}" title="${esc(m.label)}">${esc(m.short)}</span>`).join("");
+  [...box.querySelectorAll(".mpill")].forEach(el => el.onclick = ()=>loadManual(+el.dataset.m));
+}
+function header(){
+  const m = DATA.meta, h = nHaz();
+  document.getElementById("psub").innerHTML =
+    `<b style="color:var(--ink);font-weight:500">${esc(MANUALS[cur].label)}</b> &middot; ${m.n_nodes-h} sections` +
+    (h ? ` and ${h} hazard types` : "") + ` &middot; ${m.n_edges} typed links, derived automatically from the ${m.pages}-page manual.`;
+}
+// how this manual's hazards were found (set by the pipeline's convention detector)
+const convNote = () => DATA.meta.warning_convention === "untitled"
+  ? `<div class="note" style="color:#9fb6cc;background:rgba(74,163,224,.06);border-color:rgba(74,163,224,.22)">
+     This manual's safety callouts carry no hazard titles, so each hazard type was read from the
+     callout's own wording: ${DATA.meta.n_hazard_callouts} of ${DATA.meta.n_callouts} callouts name one.</div>` : "";
+const HAZ_NOTE = `<div class="note">No hazard warnings were detected here. This manual doesn't write its
+  warnings as the all-caps &ldquo;&hellip; HAZARD&rdquo; headings the pipeline looks for, so they are
+  missing from the map, not from the manual.</div>`;
 
 /* ============================ view ============================ */
 function showWhole(){
@@ -412,14 +458,20 @@ function runSearch(){
   if (q.length < 2){ box.innerHTML=""; return; }
   const hits = N.map(n=>({n, s:score(n,q)})).filter(h=>h.s>0)
                 .sort((a,b)=>b.s-a.s).slice(0,9);
-  if (!hits.length){ box.innerHTML = '<div class="hint">Nothing in the manual matches that.</div>'; return; }
-  box.innerHTML = hits.map(h=>
+  // strong matches only, so a passing mention elsewhere doesn't pull people away
+  const others = MANUALS.map((m,k)=> k===cur ? null :
+      {k, c: m.data.nodes.filter(n=>score(n,q)>=12).length}).filter(o=>o && o.c);
+  const also = others.length ? `<div class="also">Also in ${others.map(o=>
+      `<span class="mpill" data-m="${o.k}">${esc(MANUALS[o.k].short)} &middot; ${o.c}</span>`).join("")}</div>` : "";
+  box.innerHTML = (hits.length ? hits.map(h=>
     `<div class="hit${h.n.kind==="warning"?" warn":""}" data-i="${h.n.i}">
        <span class="hnum">${h.n.kind==="warning"?"&#9888;":(h.n.num||"")}</span>
-       <span class="htitle">${esc(h.n.title)}</span></div>`).join("");
+       <span class="htitle">${esc(h.n.title)}</span></div>`).join("")
+    : '<div class="hint">Nothing in this manual matches that.</div>') + also;
   [...box.querySelectorAll(".hit")].forEach(el=>
     el.onclick = ()=>{ focusOn(+el.dataset.i); document.getElementById("hint").textContent =
       "Click any dot to open the map behind it."; });
+  [...box.querySelectorAll(".also .mpill")].forEach(el=> el.onclick = ()=>loadManual(+el.dataset.m));
 }
 const esc = s => s.replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
@@ -427,7 +479,7 @@ const esc = s => s.replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"'
 function renderPanel(){
   const b = document.getElementById("pbody");
   if (focusIdx === null){
-    b.innerHTML = `<div class="empty">Showing the whole manual &mdash;
+    b.innerHTML = (nHaz() ? "" : HAZ_NOTE) + convNote() + `<div class="empty">Showing the whole manual &mdash;
       ${DATA.meta.n_nodes} nodes and ${DATA.meta.n_edges} typed links.<br><br>
       Search for a word above, or click any dot, to open the local map around it.</div>`;
     return;
@@ -446,7 +498,7 @@ function renderPanel(){
     <div class="ftitle${n.kind==="warning"?" warn":""}">${esc(n.title)}</div>
     <div class="fmeta"><span>${n.deg} link${n.deg===1?"":"s"}</span>
       ${n.chap?`<span>Chapter ${esc(n.chap)}</span>`:""}
-      <span>${vis.size-1} in view</span></div>`;
+      <span>${vis.size-1} in view</span>${nHaz() ? "" : "<span>hazards not detected</span>"}</div>`;
 
   ORDER.forEach(t=>{
     const g = groups[t]; if(!g || !g.length) return;
@@ -551,10 +603,9 @@ document.getElementById("bBack").onclick = ()=>{
 document.getElementById("bFit").onclick = fit;
 
 /* ============================ go ============================ */
-document.getElementById("psub").innerHTML =
-  `${DATA.meta.n_nodes} sections and hazard types &middot; ${DATA.meta.n_edges} typed links,
-   derived automatically from the ${DATA.meta.source.includes("H7")?"Ponsse H7":""} operator manual.`;
-resize(); showWhole(); loop();
+resize();
+loadManual(Math.max(0, MANUALS.findIndex(m => "#" + m.key === location.hash)));
+loop();
 </script>
 </body>
 </html>
