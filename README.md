@@ -5,8 +5,11 @@ the matching section of a heavy-machinery operator manual. Click any dot to open
 the map behind it.
 
 Open `index.html`, or visit the hosted page. One self-contained file: no server,
-no build step, no network access, works offline. Add `#h7`, `#c50` or `#engine`
-to the URL to open straight onto one manual.
+no build step, no network access, works offline.
+
+The address follows the view, so any view can be shared: `#engine` opens a manual,
+`#engine/1.2.6` opens that section, and `#engine/1.2.6/starting` also fills the
+search box.
 
 ## What it shows
 

@@ -40,7 +40,7 @@
     color:var(--ink);font-family:var(--sans);font-size:14px;padding:11px 12px 11px 34px;outline:none}
   #q:focus{border-color:#31536f;box-shadow:0 0 0 3px rgba(74,163,224,.10)}
   #q::placeholder{color:var(--faint)}
-  .sicon{position:absolute;left:31px;top:50%;transform:translateY(-50%);color:var(--faint);
+  .sicon{position:absolute;left:31px;top:37px;transform:translateY(-50%);color:var(--faint);   /* centred on the input, not the whole search area */
     pointer-events:none;font-size:14px}
   #hits{margin-top:10px;max-height:216px;overflow:auto}
   .hit{padding:8px 10px;border-radius:7px;cursor:pointer;display:flex;gap:9px;align-items:baseline}
@@ -218,7 +218,13 @@ const HAZ_NOTE = `<div class="note">No hazard warnings were detected here. This 
   missing from the map, not from the manual.</div>`;
 
 /* ============================ view ============================ */
+// "#engine" = whole manual; "#engine/1.2.6" = that section opened; a third part,
+// "#engine/1.2.6/starting", also fills the search box (used for slide links).
+function setHash(extra){
+  try { history.replaceState(null, "", "#" + MANUALS[cur].key + (extra ? "/" + extra : "")); } catch(e) {}
+}
 function showWhole(){
+  setHash("");
   focusIdx = null; trail = [];
   vis = new Set(N.map(n=>n.i));
   commit(true);
@@ -227,6 +233,7 @@ function focusOn(i, push=true){
   if (push && i === focusIdx) return;
   if (push && focusIdx !== null && focusIdx !== i) trail.push(focusIdx);
   focusIdx = i;
+  setHash(N[i].num ? encodeURIComponent(N[i].num) : "");
   const s = new Set([i]);
   adj[i].forEach(a=>{ if(!off.has(a.type)) s.add(a.o); });
   // second hop, so the map behind the dot has depth
@@ -604,7 +611,14 @@ document.getElementById("bFit").onclick = fit;
 
 /* ============================ go ============================ */
 resize();
-loadManual(Math.max(0, MANUALS.findIndex(m => "#" + m.key === location.hash)));
+{ // open whatever view the address names
+  const [key, num, q] = location.hash.replace(/^#/, "").split("/").map(x => decodeURIComponent(x || ""));
+  loadManual(Math.max(0, MANUALS.findIndex(m => m.key === key)));
+  if (q){ document.getElementById("q").value = q; runSearch(); }
+  const n = num && N.find(n => n.kind === "section" && n.num === num);
+  if (n) focusOn(n.i);
+  if (q) setHash((num ? encodeURIComponent(num) : "") + "/" + encodeURIComponent(q));
+}
 loop();
 </script>
 </body>
