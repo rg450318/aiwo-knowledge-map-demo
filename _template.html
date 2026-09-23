@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AiWo Knowledge Map</title>
+<style>
+  :root{
+    --bg:#080b11; --bg2:#0d121b; --panel:#0b1018; --hair:#1b2534;
+    --ink:#e8eef6; --mute:#7c8ba0; --faint:#4a586c;
+    --crossref:#4aa3e0; --hierarchy:#93a1b3; --lsa:#43c9a8;
+    --hazardEdge:#e8a33d; --warns:#e8584f; --warnNode:#ff6b60;
+    --sans:"Inter","Helvetica Neue",Helvetica,Arial,sans-serif;
+    --serif:Georgia,"Times New Roman",serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--ink);
+    font-family:var(--sans);-webkit-font-smoothing:antialiased}
+  #app{display:flex;height:100%}
+
+  /* ---------------- panel ---------------- */
+  #panel{width:340px;flex:none;background:var(--panel);border-right:1px solid var(--hair);
+    display:flex;flex-direction:column;overflow:hidden}
+  .phead{padding:20px 20px 14px;border-bottom:1px solid var(--hair)}
+  .eyebrow{font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--faint)}
+  .ptitle{font-family:var(--serif);font-size:21px;margin-top:7px;line-height:1.2}
+  .psub{font-size:11.5px;color:var(--mute);margin-top:7px;line-height:1.45}
+
+  .searchwrap{padding:16px 20px;border-bottom:1px solid var(--hair);position:relative}
+  #q{width:100%;background:var(--bg2);border:1px solid var(--hair);border-radius:8px;
+    color:var(--ink);font-family:var(--sans);font-size:14px;padding:11px 12px 11px 34px;outline:none}
+  #q:focus{border-color:#31536f;box-shadow:0 0 0 3px rgba(74,163,224,.10)}
+  #q::placeholder{color:var(--faint)}
+  .sicon{position:absolute;left:31px;top:50%;transform:translateY(-50%);color:var(--faint);
+    pointer-events:none;font-size:14px}
+  #hits{margin-top:10px;max-height:216px;overflow:auto}
+  .hit{padding:8px 10px;border-radius:7px;cursor:pointer;display:flex;gap:9px;align-items:baseline}
+  .hit:hover,.hit.sel{background:#141c28}
+  .hit .hnum{font-family:var(--serif);font-size:11px;color:var(--faint);flex:none;min-width:34px}
+  .hit .htitle{font-size:12.5px;line-height:1.35}
+  .hit.warn .htitle{color:var(--warnNode)}
+  .hint{font-size:11px;color:var(--faint);margin-top:9px;line-height:1.5}
+
+  .pbody{flex:1;overflow:auto;padding:16px 20px}
+  .crumbs{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px}
+  .crumb{font-size:10.5px;color:var(--mute);background:#111925;border:1px solid var(--hair);
+    padding:3px 8px;border-radius:20px;cursor:pointer;max-width:100%;overflow:hidden;
+    text-overflow:ellipsis;white-space:nowrap}
+  .crumb:hover{color:var(--ink);border-color:#2a3b50}
+
+  .fnum{font-family:var(--serif);font-size:12px;color:var(--mute)}
+  .ftitle{font-family:var(--serif);font-size:19px;line-height:1.28;margin:4px 0 10px}
+  .ftitle.warn{color:var(--warnNode)}
+  .fmeta{font-size:11px;color:var(--mute);display:flex;gap:14px;margin-bottom:16px}
+  .grp{margin-bottom:15px}
+  .glab{font-size:9.5px;letter-spacing:.17em;text-transform:uppercase;color:var(--faint);
+    display:flex;align-items:center;gap:7px;margin-bottom:7px}
+  .swatch{width:15px;height:2px;flex:none;border-radius:2px}
+  .lnk{font-size:12.5px;line-height:1.4;padding:5px 7px;border-radius:6px;cursor:pointer;
+    color:#b8c6d8;display:flex;gap:8px;align-items:baseline}
+  .lnk:hover{background:#141c28;color:#fff}
+  .lnk .lnum{font-family:var(--serif);font-size:10.5px;color:var(--faint);flex:none;min-width:32px}
+  .lnk.warn{color:var(--warnNode)}
+  .empty{font-size:12px;color:var(--faint);line-height:1.6}
+
+  .legend{border-top:1px solid var(--hair);padding:14px 20px}
+  .lrow{display:flex;align-items:center;gap:9px;font-size:11px;color:var(--mute);
+    padding:3px 0;cursor:pointer;user-select:none}
+  .lrow:hover{color:var(--ink)}
+  .lrow.off{opacity:.32}
+  .lrow .n{margin-left:auto;font-family:var(--serif);font-size:11px;color:var(--faint)}
+  .foot{padding:11px 20px 14px;border-top:1px solid var(--hair);font-size:10px;
+    color:var(--faint);line-height:1.55}
+
+  /* ---------------- stage ---------------- */
+  #stage{flex:1;position:relative;background:
+    radial-gradient(120% 100% at 62% 34%, #121a26 0%, #0a0e15 52%, #070a0f 100%)}
+  canvas{display:block;width:100%;height:100%}
+  #tip{position:absolute;pointer-events:none;background:rgba(10,14,21,.95);
+    border:1px solid var(--hair);border-radius:7px;padding:8px 11px;font-size:12px;
+    max-width:270px;opacity:0;transition:opacity .12s;line-height:1.4;
+    box-shadow:0 8px 26px rgba(0,0,0,.6)}
+  #tip .tnum{font-family:var(--serif);font-size:10.5px;color:var(--mute);display:block}
+  #tip .tterms{color:var(--faint);font-size:10.5px;margin-top:5px;display:block;line-height:1.5}
+  #bar{position:absolute;left:18px;top:16px;display:flex;gap:7px}
+  .btn{background:rgba(14,20,30,.86);border:1px solid var(--hair);color:var(--mute);
+    font-size:11px;font-family:var(--sans);padding:6px 11px;border-radius:7px;cursor:pointer}
+  .btn:hover{color:var(--ink);border-color:#2a3b50}
+  #status{position:absolute;right:18px;bottom:15px;font-size:10.5px;color:var(--faint);
+    text-align:right;line-height:1.5}
+  @media (max-width:820px){
+    #app{flex-direction:column}
+    #panel{width:100%;height:46%;border-right:none;border-bottom:1px solid var(--hair)}
+    #stage{height:54%}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="panel">
+    <div class="phead">
+      <div class="eyebrow">AiWo &middot; Task 2.4</div>
+      <div class="ptitle">Knowledge map</div>
+      <div class="psub" id="psub"></div>
+    </div>
+
+    <div class="searchwrap">
+      <span class="sicon">&#9906;</span>
+      <input id="q" type="text" autocomplete="off" spellcheck="false"
+             placeholder="Type a word &mdash; sawing, hydraulic, chain&hellip;">
+      <div id="hits"></div>
+      <div class="hint" id="hint">Search the manual, then click any dot to open the map behind it.</div>
+    </div>
+
+    <div class="pbody" id="pbody"></div>
+    <div class="legend" id="legend"></div>
+    <div class="foot">
+      Derived structure only &mdash; section titles, typed links and term frequencies.
+      No manual prose is included.
+    </div>
+  </div>
+
+  <div id="stage">
+    <canvas id="cv"></canvas>
+    <div id="bar">
+      <button class="btn" id="bWhole">Whole manual</button>
+      <button class="btn" id="bBack">&larr; Back</button>
+      <button class="btn" id="bFit">Fit</button>
+    </div>
+    <div id="tip"></div>
+    <div id="status"></div>
+  </div>
+</div>
+
+<script>
+const DATA = /*__DATA__*/;
+
+/* ============================ setup ============================ */
+const EDGE = {
+  hierarchy:     {c:"#93a1b3", label:"Hierarchy",     w:1.25, a:.34},
+  crossref:      {c:"#4aa3e0", label:"Cross-reference",w:1.25, a:.50},
+  lsa_similar:   {c:"#43c9a8", label:"LSA similarity", w:1.10, a:.34},
+  shared_hazard: {c:"#e8a33d", label:"Shared hazard",  w:1.15, a:.40},
+  warns:         {c:"#e8584f", label:"Warns",          w:1.45, a:.62},
+};
+const ORDER = ["warns","hierarchy","crossref","shared_hazard","lsa_similar"];
+
+const N = DATA.nodes.map((d,i)=>({...d, i,
+  title: (d.title||"").replace(/^\[WARN\]\s*/, ""),   // R node ids carry this prefix
+  x:0, y:0, dx:0, dy:0, born:0, on:false}));
+const E = DATA.edges.map(e=>({s:e.s, t:e.t, type:e.type}));
+const adj = N.map(()=>[]);
+E.forEach((e,k)=>{ adj[e.s].push({o:e.t,k,type:e.type}); adj[e.t].push({o:e.s,k,type:e.type}); });
+
+const off = new Set();                       // edge types toggled off
+let focusIdx = null, trail = [], hoverIdx = null;
+let vis = new Set(), visE = [];
+let cam = {x:0, y:0, k:1}, camT = {x:0, y:0, k:1};
+let temp = 1, dragging = null, panning = null;
+
+const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+const tip = document.getElementById("tip");
+let W = 0, H = 0, DPR = 1;
+
+function resize(){
+  const r = cv.parentElement.getBoundingClientRect();
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = r.width; H = r.height;
+  cv.width = W*DPR; cv.height = H*DPR;
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+}
+window.addEventListener("resize", ()=>{ resize(); });
+
+/* ============================ view ============================ */
+function showWhole(){
+  focusIdx = null; trail = [];
+  vis = new Set(N.map(n=>n.i));
+  commit(true);
+}
+function focusOn(i, push=true){
+  if (push && focusIdx !== null && focusIdx !== i) trail.push(focusIdx);
+  focusIdx = i;
+  const s = new Set([i]);
+  adj[i].forEach(a=>{ if(!off.has(a.type)) s.add(a.o); });
+  // second hop, so the map behind the dot has depth
+  [...s].forEach(j=>{ if(j!==i) adj[j].forEach(a=>{ if(!off.has(a.type)) s.add(a.o); }); });
+  vis = s;
+  commit(false);
+}
+function commit(whole){
+  const now = performance.now();
+  N.forEach(n=>{
+    const was = n.on; n.on = vis.has(n.i);
+    if (n.on && !was){
+      n.born = now;
+      if (!was && focusIdx!==null && n.i!==focusIdx){    // fly in from the focus
+        const f = N[focusIdx], ang = Math.random()*Math.PI*2, r = 60+Math.random()*90;
+        n.x = f.x + Math.cos(ang)*r; n.y = f.y + Math.sin(ang)*r;
+      } else if (!was){
+        const a = Math.random()*Math.PI*2, rr = 380*Math.sqrt(Math.random());
+        n.x = Math.cos(a)*rr; n.y = Math.sin(a)*rr;
+      }
+      n.dx = n.dy = 0;
+    }
+  });
+  visE = E.filter(e => !off.has(e.type) && vis.has(e.s) && vis.has(e.t));
+  temp = whole ? 1 : .85;
+  renderPanel(); renderLegend(); status();
+  setTimeout(fit, whole ? 420 : 360);
+}
+
+/* ============================ forces ============================ */
+/* Fruchterman-Reingold. Displacement per tick is capped by a cooling
+   temperature, so the layout cannot run away however many nodes are on. */
+function step(){
+  const live = N.filter(n=>n.on);
+  const n = live.length; if(!n) return;
+  const AREA = focusIdx===null ? 760*760 : 520*520;
+  const k    = Math.sqrt(AREA/n);              // natural spacing
+  const t    = Math.max(0.30, temp*Math.sqrt(AREA)/16);
+  temp = Math.max(0.010, temp*0.982);
+
+  for (const p of live){ p.dx = 0; p.dy = 0; }
+
+  for (let a=0;a<n;a++){                        // repulsion: k^2/d
+    const p = live[a];
+    for (let b=a+1;b<n;b++){
+      const q = live[b];
+      let dx = p.x-q.x, dy = p.y-q.y, d = Math.hypot(dx,dy);
+      if (d < .01){ dx = Math.random()-.5; dy = Math.random()-.5; d = .01; }
+      const f = (k*k)/(d*d);
+      p.dx += dx*f; p.dy += dy*f;
+      q.dx -= dx*f; q.dy -= dy*f;
+    }
+  }
+  for (const e of visE){                        // attraction: d^2/k
+    const p = N[e.s], q = N[e.t];
+    let dx = p.x-q.x, dy = p.y-q.y, d = Math.hypot(dx,dy);
+    if (d < .01) continue;
+    const w = e.type==="hierarchy" ? 1.45 : e.type==="warns" ? 1.20 : 0.80;
+    const f = (d/k)*w;
+    p.dx -= dx*f; p.dy -= dy*f;
+    q.dx += dx*f; q.dy += dy*f;
+  }
+  const R = Math.sqrt(AREA)/2;                  // the frame FR confines to
+  for (const p of live){
+    const g = (focusIdx!==null && p.i===focusIdx) ? 0.26 : 0.055;
+    p.dx -= p.x*g; p.dy -= p.y*g;
+    if (dragging===p) continue;
+    const d = Math.hypot(p.dx,p.dy) || 1;
+    const m = Math.min(d, t);                   // temperature cap
+    p.x += p.dx/d*m; p.y += p.dy/d*m;
+    // total repulsion grows with n while gravity is only linear, so a sparse
+    // graph would drift outward for ever. Confine it to the frame.
+    const rr = Math.hypot(p.x,p.y);
+    if (rr > R){ p.x = p.x/rr*R; p.y = p.y/rr*R; }
+  }
+}
+const rad = n => n.kind==="warning" ? 7.2 + Math.min(n.deg,14)*.30
+                                    : 4.4 + Math.min(n.deg,18)*.42;
+
+/* ============================ camera ============================ */
+function fit(){
+  const live = N.filter(n=>n.on); if(!live.length) return;
+  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+  live.forEach(n=>{ x0=Math.min(x0,n.x); y0=Math.min(y0,n.y);
+                    x1=Math.max(x1,n.x); y1=Math.max(y1,n.y); });
+  const pad = 96, bw = Math.max(x1-x0,1), bh = Math.max(y1-y0,1);
+  camT.k = Math.max(.25, Math.min(2.1, Math.min((W-pad*2)/bw, (H-pad*2)/bh)));
+  camT.x = W/2 - (x0+x1)/2*camT.k;
+  camT.y = H/2 - (y0+y1)/2*camT.k;
+}
+const toScreen = n => ({x:n.x*cam.k+cam.x, y:n.y*cam.k+cam.y});
+
+/* ============================ draw ============================ */
+function draw(){
+  const now = performance.now();
+  cam.k += (camT.k-cam.k)*.10; cam.x += (camT.x-cam.x)*.10; cam.y += (camT.y-cam.y)*.10;
+  ctx.clearRect(0,0,W,H);
+
+  const hi = hoverIdx!==null ? hoverIdx : focusIdx;
+  const near = new Set();
+  if (hi!==null){ near.add(hi); adj[hi].forEach(a=>{ if(!off.has(a.type)) near.add(a.o); }); }
+
+  ctx.lineCap = "round";
+  for (const e of visE){
+    const sp = toScreen(N[e.s]), tp = toScreen(N[e.t]), st = EDGE[e.type];
+    const lit = hi!==null && (e.s===hi || e.t===hi);
+    const dim = hi!==null && !lit;
+    ctx.globalAlpha = (lit ? Math.min(1, st.a+.42) : dim ? st.a*.20 : st.a)
+                    * fade(N[e.s],now) * fade(N[e.t],now);
+    ctx.strokeStyle = st.c;
+    ctx.lineWidth = (lit ? st.w+.85 : st.w) * Math.min(1.35, Math.max(.65, cam.k));
+    ctx.beginPath();
+    const mx=(sp.x+tp.x)/2, my=(sp.y+tp.y)/2;
+    const nx=-(tp.y-sp.y), ny=(tp.x-sp.x), nl=Math.hypot(nx,ny)||1, bow=Math.min(17,nl*.055);
+    ctx.moveTo(sp.x,sp.y);
+    ctx.quadraticCurveTo(mx+nx/nl*bow, my+ny/nl*bow, tp.x,tp.y);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  const live = N.filter(n=>n.on).sort((a,b)=>rad(a)-rad(b));
+  for (const n of live){
+    const p = toScreen(n), r = rad(n)*Math.min(1.5,Math.max(.62,cam.k));
+    const f = fade(n,now);
+    const isF = n.i===focusIdx, isH = n.i===hoverIdx;
+    const dim = hi!==null && !near.has(n.i);
+    const base = n.kind==="warning" ? "#ff6b60" : isF ? "#ffffff" : "#b9cade";
+    ctx.globalAlpha = f * (dim ? .26 : 1);
+
+    const gr = ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,r*(isF?5.2:3.5));
+    gr.addColorStop(0, hexA(base, isF?.50:isH?.38:.24));
+    gr.addColorStop(1, hexA(base, 0));
+    ctx.fillStyle = gr;
+    ctx.beginPath(); ctx.arc(p.x,p.y,r*(isF?5.2:3.5),0,6.2832); ctx.fill();
+
+    ctx.fillStyle = base;
+    ctx.beginPath(); ctx.arc(p.x,p.y,r*(isF?1.32:1),0,6.2832); ctx.fill();
+    if (isF || isH){
+      ctx.strokeStyle = hexA("#ffffff", isF?.92:.55);
+      ctx.lineWidth = isF?2.1:1.3;
+      ctx.beginPath(); ctx.arc(p.x,p.y,r*(isF?1.32:1)+3.4,0,6.2832); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // labels: focus, its neighbours, hovered, and hazards
+  ctx.font = '11.5px "Inter","Helvetica Neue",Arial,sans-serif';
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  for (const n of live){
+    const isF = n.i===focusIdx, isH = n.i===hoverIdx;
+    const nb = hi!==null && near.has(n.i);
+    const show = isF || isH || nb || (n.kind==="warning" && cam.k>.5)
+              || (focusIdx===null && n.deg>=11);
+    if (!show) continue;
+    const p = toScreen(n), r = rad(n)*Math.min(1.5,Math.max(.62,cam.k));
+    const txt = short(n, isF?46:30);
+    ctx.globalAlpha = fade(n,now) * (isF?1:isH?.96:nb?.80:.55);
+    ctx.font = (isF?'600 13px ':'11.5px ')+'"Inter","Helvetica Neue",Arial,sans-serif';
+    const w = ctx.measureText(txt).width, y = p.y + r*(isF?1.32:1) + 13;
+    ctx.fillStyle = "rgba(8,11,17,.80)";
+    ctx.fillRect(p.x-w/2-5, y-8.5, w+10, 17);
+    ctx.fillStyle = n.kind==="warning" ? "#ff8a80" : isF ? "#ffffff" : "#9fb2c8";
+    ctx.fillText(txt, p.x, y);
+    ctx.globalAlpha = 1;
+  }
+}
+const fade = (n,now) => Math.min(1,(now-n.born)/420);
+const hexA = (h,a)=>{ const c=h.replace("#",""); const v=parseInt(c,16);
+  return `rgba(${(v>>16)&255},${(v>>8)&255},${v&255},${a})`; };
+const short = (n,m)=>{ const t = n.kind==="warning" ? n.title : (n.num? n.num+" "+n.title : n.title);
+  return t.length>m ? t.slice(0,m-1).trimEnd()+"…" : t; };
+
+function loop(){ step(); draw(); requestAnimationFrame(loop); }
+
+/* ============================ search ============================ */
+function score(n,q){
+  const t = (n.title||"").toLowerCase(), num = (n.num||"");
+  let s = 0;
+  if (t === q) s += 120;
+  if (t.startsWith(q)) s += 60;
+  if (t.includes(q)) s += 34;
+  t.split(/\s+/).forEach(w=>{ if(w.startsWith(q)) s += 22; });
+  if (num.startsWith(q)) s += 45;
+  const terms = n.terms||[];
+  for (let i=0;i<terms.length;i++){
+    const w = terms[i];
+    if (w === q) s += 20 - Math.min(i,14)*0.6;
+    else if (w.startsWith(q)) s += 12 - Math.min(i,14)*0.5;
+    else if (q.length>=5 && w.includes(q)) s += 4;
+  }
+  if (n.kind==="warning") s *= 1.18;
+  return s;
+}
+function runSearch(){
+  const q = document.getElementById("q").value.trim().toLowerCase();
+  const box = document.getElementById("hits");
+  if (q.length < 2){ box.innerHTML=""; return; }
+  const hits = N.map(n=>({n, s:score(n,q)})).filter(h=>h.s>0)
+                .sort((a,b)=>b.s-a.s).slice(0,9);
+  if (!hits.length){ box.innerHTML = '<div class="hint">Nothing in the manual matches that.</div>'; return; }
+  box.innerHTML = hits.map(h=>
+    `<div class="hit${h.n.kind==="warning"?" warn":""}" data-i="${h.n.i}">
+       <span class="hnum">${h.n.kind==="warning"?"&#9888;":(h.n.num||"")}</span>
+       <span class="htitle">${esc(h.n.title)}</span></div>`).join("");
+  [...box.querySelectorAll(".hit")].forEach(el=>
+    el.onclick = ()=>{ focusOn(+el.dataset.i); document.getElementById("hint").textContent =
+      "Click any dot to open the map behind it."; });
+}
+const esc = s => s.replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+/* ============================ panel ============================ */
+function renderPanel(){
+  const b = document.getElementById("pbody");
+  if (focusIdx === null){
+    b.innerHTML = `<div class="empty">Showing the whole manual &mdash;
+      ${DATA.meta.n_nodes} nodes and ${DATA.meta.n_edges} typed links.<br><br>
+      Search for a word above, or click any dot, to open the local map around it.</div>`;
+    return;
+  }
+  const n = N[focusIdx];
+  const groups = {};
+  adj[focusIdx].forEach(a=>{ if(off.has(a.type)) return;
+    (groups[a.type] = groups[a.type] || []).push(N[a.o]); });
+
+  let html = "";
+  if (trail.length){
+    html += '<div class="crumbs">' + trail.slice(-4).map((t,k)=>
+      `<span class="crumb" data-b="${k}">${esc(short(N[t],26))}</span>`).join("") + "</div>";
+  }
+  html += `<div class="fnum">${n.kind==="warning" ? "Hazard type" : (n.num||"")}</div>
+    <div class="ftitle${n.kind==="warning"?" warn":""}">${esc(n.title)}</div>
+    <div class="fmeta"><span>${n.deg} link${n.deg===1?"":"s"}</span>
+      ${n.chap?`<span>Chapter ${esc(n.chap)}</span>`:""}
+      <span>${vis.size-1} in view</span></div>`;
+
+  ORDER.forEach(t=>{
+    const g = groups[t]; if(!g || !g.length) return;
+    html += `<div class="grp"><div class="glab">
+        <span class="swatch" style="background:${EDGE[t].c}"></span>${EDGE[t].label} &middot; ${g.length}</div>` +
+      g.sort((a,b)=>(a.num||"zz").localeCompare(b.num||"zz")).map(m=>
+        `<div class="lnk${m.kind==="warning"?" warn":""}" data-i="${m.i}">
+           <span class="lnum">${m.kind==="warning"?"&#9888;":(m.num||"")}</span>
+           <span>${esc(m.title)}</span></div>`).join("") + `</div>`;
+  });
+  if (!Object.keys(groups).length)
+    html += '<div class="empty">No links of the enabled types.</div>';
+
+  b.innerHTML = html;
+  [...b.querySelectorAll(".lnk")].forEach(el => el.onclick = ()=>focusOn(+el.dataset.i));
+  [...b.querySelectorAll(".crumb")].forEach(el => el.onclick = ()=>{
+    const abs = trail.length-Math.min(4,trail.length)+(+el.dataset.b);
+    const target = trail[abs]; trail = trail.slice(0,abs); focusOn(target,false);
+  });
+  b.scrollTop = 0;
+}
+function renderLegend(){
+  const counts = {}; ORDER.forEach(t=>counts[t]=0);
+  E.forEach(e=>{ if(vis.has(e.s)&&vis.has(e.t)) counts[e.type]++; });
+  document.getElementById("legend").innerHTML = ORDER.map(t=>
+    `<div class="lrow${off.has(t)?" off":""}" data-t="${t}">
+       <span class="swatch" style="background:${EDGE[t].c}"></span>
+       <span>${EDGE[t].label}</span><span class="n">${counts[t]}</span></div>`).join("");
+  [...document.querySelectorAll(".lrow")].forEach(el => el.onclick = ()=>{
+    const t = el.dataset.t; off.has(t) ? off.delete(t) : off.add(t);
+    focusIdx===null ? showWhole() : focusOn(focusIdx,false);
+  });
+}
+function status(){
+  document.getElementById("status").innerHTML =
+    `${vis.size} nodes &middot; ${visE.length} links shown<br>${esc(DATA.meta.source)}`;
+}
+
+/* ============================ interaction ============================ */
+function pick(mx,my){
+  let best=null, bd=1e9;
+  for (const n of N){ if(!n.on) continue;
+    const p = toScreen(n), d = Math.hypot(p.x-mx, p.y-my);
+    const r = rad(n)*Math.min(1.5,Math.max(.62,cam.k))+9;
+    if (d<r && d<bd){ bd=d; best=n; } }
+  return best;
+}
+cv.addEventListener("mousemove", ev=>{
+  const r = cv.getBoundingClientRect(), mx = ev.clientX-r.left, my = ev.clientY-r.top;
+  if (dragging){ dragging.x = (mx-cam.x)/cam.k; dragging.y = (my-cam.y)/cam.k;
+                 temp = Math.max(temp,.22); return; }
+  if (panning){ camT.x += mx-panning.x; camT.y += my-panning.y;
+                cam.x += mx-panning.x; cam.y += my-panning.y;
+                panning = {x:mx,y:my}; return; }
+  const n = pick(mx,my);
+  hoverIdx = n ? n.i : null;
+  cv.style.cursor = n ? "pointer" : "grab";
+  if (n){
+    const t = n.kind==="warning" ? "Hazard type" : (n.num||"");
+    tip.innerHTML = `<span class="tnum">${t} &middot; ${n.deg} links</span>${esc(n.title)}` +
+      ((n.terms&&n.terms.length)?`<span class="tterms">${esc(n.terms.slice(0,7).join(" · "))}</span>`:"");
+    tip.style.opacity = 1;
+    tip.style.left = Math.min(W-280, mx+16)+"px";
+    tip.style.top  = Math.min(H-92, my+14)+"px";
+  } else tip.style.opacity = 0;
+});
+cv.addEventListener("mousedown", ev=>{
+  const r = cv.getBoundingClientRect(), mx = ev.clientX-r.left, my = ev.clientY-r.top;
+  const n = pick(mx,my);
+  if (n){ dragging = n; cv.style.cursor="grabbing"; }
+  else { panning = {x:mx,y:my}; cv.style.cursor="grabbing"; }
+});
+window.addEventListener("mouseup", ev=>{
+  if (dragging){
+    const r = cv.getBoundingClientRect();
+    const p = toScreen(dragging);
+    if (Math.hypot(p.x-(ev.clientX-r.left), p.y-(ev.clientY-r.top)) < 6) focusOn(dragging.i);
+  }
+  dragging = null; panning = null; cv.style.cursor = "grab";
+});
+cv.addEventListener("wheel", ev=>{
+  ev.preventDefault();
+  const r = cv.getBoundingClientRect(), mx = ev.clientX-r.left, my = ev.clientY-r.top;
+  const k = Math.max(.18, Math.min(3.4, camT.k * (ev.deltaY<0 ? 1.12 : 1/1.12)));
+  camT.x = mx - (mx-camT.x)*(k/camT.k); camT.y = my - (my-camT.y)*(k/camT.k); camT.k = k;
+}, {passive:false});
+cv.addEventListener("mouseleave", ()=>{ tip.style.opacity=0; hoverIdx=null; });
+
+document.getElementById("q").addEventListener("input", runSearch);
+document.getElementById("q").addEventListener("keydown", ev=>{
+  if (ev.key==="Enter"){ const f = document.querySelector(".hit"); if(f) f.click(); }
+});
+document.getElementById("bWhole").onclick = ()=>{ showWhole();
+  document.getElementById("q").value=""; document.getElementById("hits").innerHTML=""; };
+document.getElementById("bBack").onclick = ()=>{
+  if (!trail.length) return showWhole();
+  focusOn(trail.pop(), false);
+};
+document.getElementById("bFit").onclick = fit;
+
+/* ============================ go ============================ */
+document.getElementById("psub").innerHTML =
+  `${DATA.meta.n_nodes} sections and hazard types &middot; ${DATA.meta.n_edges} typed links,
+   derived automatically from the ${DATA.meta.source.includes("H7")?"Ponsse H7":""} operator manual.`;
+resize(); showWhole(); loop();
+</script>
+</body>
+</html>
