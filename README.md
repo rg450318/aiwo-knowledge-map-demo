@@ -58,6 +58,13 @@ and a short gloss in our own words. A ring node per hazard type holds the
 category; warnings of the same type meet there, two hops apart, rather than
 being joined directly as if they warned of the same thing.
 
+## Linking to the manual
+
+`build.py --protected DIR` writes a second build whose panel offers "Open the
+manual at p. N", pointing at `DIR/manuals/<pdf>#page=N`. That build is for a
+login-protected copy only and is never committed here; this public build has no
+such link and no PDF.
+
 ## Source material
 
 Structure derived from Ponsse operator manuals, used within the AiWo research
