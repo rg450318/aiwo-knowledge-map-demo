@@ -74,6 +74,9 @@
     font-size:10.5px;color:var(--mute)}
   .nkey span{display:flex;align-items:center;gap:5px}
   .nkey i{display:inline-block;width:8px;height:8px;border-radius:50%}
+  .nkey .hubkey{cursor:pointer;user-select:none}
+  .nkey .hubkey:hover{color:var(--ink)}
+  .nkey .hubkey.off{opacity:.32;text-decoration:line-through}
 
   .legend{border-top:1px solid var(--hair);padding:14px 20px}
   .lrow{display:flex;align-items:center;gap:9px;font-size:11px;color:var(--mute);
@@ -202,6 +205,8 @@ const nHaz = () => N.filter(isW).length;
 const nTyp = () => N.filter(isT).length;
 
 const off = new Set();                       // edge types toggled off
+let hideHubs = false;                        // hazard-type ring nodes toggled off
+const okLink = a => !off.has(a.type) && !(hideHubs && isT(N[a.o]));
 let focusIdx = null, trail = [], hoverIdx = null;
 let vis = new Set(), visE = [];
 let cam = {x:0, y:0, k:1}, camT = {x:0, y:0, k:1};
@@ -268,7 +273,7 @@ function setHash(extra){
 function showWhole(){
   setHash("");
   focusIdx = null; trail = [];
-  vis = new Set(N.map(n=>n.i));
+  vis = new Set(N.filter(n => !(hideHubs && isT(n))).map(n=>n.i));
   commit(true);
 }
 function focusOn(i, push=true){
@@ -277,9 +282,9 @@ function focusOn(i, push=true){
   focusIdx = i;
   setHash(N[i].num ? encodeURIComponent(N[i].num) : "");
   const s = new Set([i]);
-  adj[i].forEach(a=>{ if(!off.has(a.type)) s.add(a.o); });
+  adj[i].forEach(a=>{ if(okLink(a)) s.add(a.o); });
   // second hop, so the map behind the dot has depth
-  [...s].forEach(j=>{ if(j!==i) adj[j].forEach(a=>{ if(!off.has(a.type)) s.add(a.o); }); });
+  [...s].forEach(j=>{ if(j!==i) adj[j].forEach(a=>{ if(okLink(a)) s.add(a.o); }); });
   vis = s;
   commit(false);
 }
@@ -520,7 +525,7 @@ function runSearch(){
   const q = document.getElementById("q").value.trim().toLowerCase();
   const box = document.getElementById("hits");
   if (q.length < 2){ box.innerHTML=""; return; }
-  const hits = N.map(n=>({n, s:score(n,q)})).filter(h=>h.s>0)
+  const hits = N.filter(n => !(hideHubs && isT(n))).map(n=>({n, s:score(n,q)})).filter(h=>h.s>0)
                 .sort((a,b)=>b.s-a.s).slice(0,9);
   // strong matches only, so a passing mention elsewhere doesn't pull people away
   const others = MANUALS.map((m,k)=> k===cur ? null :
@@ -557,7 +562,7 @@ function renderPanel(){
   }
   const n = N[focusIdx];
   const groups = {};
-  adj[focusIdx].forEach(a=>{ if(off.has(a.type)) return;
+  adj[focusIdx].forEach(a=>{ if(!okLink(a)) return;
     (groups[a.type] = groups[a.type] || []).push(N[a.o]); });
 
   let html = "";
@@ -598,15 +603,17 @@ function renderLegend(){
   E.forEach(e=>{ if(vis.has(e.s)&&vis.has(e.t)) counts[e.type]++; });
   const key = nHaz() ? `<div class="nkey">` + ["DANGER","WARNING","CAUTION","NOTE"].map(l =>
       `<span><i style="background:${LEVEL[l]}"></i>${l.charAt(0)+l.slice(1).toLowerCase()}</span>`).join("") +
-      `<span><i style="border:2px solid ${TYPE_C};background:none"></i>Hazard type</span></div>` : "";
+      `<span class="hubkey${hideHubs?" off":""}" title="${hideHubs?"Show":"Hide"} the hazard-type nodes"><i style="border:2px solid ${TYPE_C};background:none"></i>Hazard type</span></div>` : "";
   document.getElementById("legend").innerHTML = ORDER.map(t=>
     `<div class="lrow${off.has(t)?" off":""}" data-t="${t}">
        <span class="swatch" style="background:${EDGE[t].c}"></span>
        <span>${EDGE[t].label}</span><span class="n">${counts[t]}</span></div>`).join("") + key;
+  const refresh = ()=> focusIdx===null ? showWhole() : focusOn(focusIdx,false);
   [...document.querySelectorAll(".lrow")].forEach(el => el.onclick = ()=>{
-    const t = el.dataset.t; off.has(t) ? off.delete(t) : off.add(t);
-    focusIdx===null ? showWhole() : focusOn(focusIdx,false);
+    const t = el.dataset.t; off.has(t) ? off.delete(t) : off.add(t); refresh();
   });
+  const hk = document.querySelector(".hubkey");           // the ring entry toggles the hub nodes
+  if (hk) hk.onclick = ()=>{ hideHubs = !hideHubs; refresh(); };
 }
 function status(){
   document.getElementById("status").innerHTML =

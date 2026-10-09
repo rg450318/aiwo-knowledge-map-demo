@@ -74,7 +74,7 @@ appears in this repository.
 | Manual pills | Switch manual; map, search, legend and panel all follow. |
 | Search | Two letters or more; matches titles, section numbers, section vocabulary, and a warning's gloss, type and level ("danger"). "Also in" shows strong matches in the other manuals and switches to them in one click. |
 | Click a dot | Opens that node's two-hop neighbourhood. |
-| Legend | Click an edge type to filter it from map and panel. |
+| Legend | Click an edge type to filter it from map and panel; click "Hazard type" in the key to hide the ring nodes. |
 | Breadcrumbs | Retrace your path; `Back` steps up one. |
 | Drag / scroll | Move a node, pan the background, zoom, `Fit` to reframe. |
 
