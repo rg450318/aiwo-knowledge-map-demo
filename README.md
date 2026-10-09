@@ -25,13 +25,13 @@ than invented.
 The map is derived automatically from each manual's own text. There is no
 ontology and no hand curation.
 
-| Manual | Pages | Sections | Hazard types | Typed links |
-| --- | --- | --- | --- | --- |
-| H7 harvester head | 346 | 135 | 11 | 183 |
-| C50 crane | 120 | 79 | 7 | 57 |
-| Scorpion King 8W engine | 91 | 47 | 6 | 63 |
+| Manual | Pages | Sections | Safety warnings | Hazard types | Typed links |
+| --- | --- | --- | --- | --- | --- |
+| H7 harvester head | 346 | 135 | 19 | 12 | 186 |
+| C50 crane | 120 | 79 | 16 | 8 | 67 |
+| Scorpion King 8W engine | 91 | 47 | 21 | 6 | 73 |
 
-Links are typed — hierarchy, cross-reference, warns, shared hazard, semantic
+Links are typed — hierarchy, cross-reference, warns, same hazard type, semantic
 similarity — so when two things are linked the reason is always recoverable.
 
 ## How hazards are found
@@ -49,20 +49,30 @@ accordingly:
 The boxes and icons are read from the PDF's vector drawings, because plain text
 extraction loses them. A callout becomes a hazard only if its text names one.
 
+A hazard name is a category, not a warning: in the H7 manual, `CRUSHING HAZARD`
+heads four different boxes (a falling tree, feeding a tree towards the cabin,
+the head tipping over, a cover falling on a hand) at levels from DANGER down to
+CAUTION. So each distinct callout is its own node, coloured by the signal level
+printed beside it (danger, warning, caution, note) and labelled with its pages
+and a short gloss in our own words. A ring node per hazard type holds the
+category; warnings of the same type meet there, two hops apart, rather than
+being joined directly as if they warned of the same thing.
+
 ## Source material
 
 Structure derived from Ponsse operator manuals, used within the AiWo research
 consortium. **The manuals themselves are not included and not redistributed.**
-This page carries only section titles, the typed links between them, and
-per-section term lists for the search box. No prose from any manual appears in
-this repository.
+This page carries only section titles, the typed links between them,
+per-section term lists for the search box, and for each safety callout its
+signal level, page numbers and a gloss written by us. No prose from any manual
+appears in this repository.
 
 ## Using it
 
 | | |
 | --- | --- |
 | Manual pills | Switch manual; map, search, legend and panel all follow. |
-| Search | Two letters or more; matches titles, section numbers and section vocabulary. "Also in" shows strong matches in the other manuals and switches to them in one click. |
+| Search | Two letters or more; matches titles, section numbers, section vocabulary, and a warning's gloss, type and level ("danger"). "Also in" shows strong matches in the other manuals and switches to them in one click. |
 | Click a dot | Opens that node's two-hop neighbourhood. |
 | Legend | Click an edge type to filter it from map and panel. |
 | Breadcrumbs | Retrace your path; `Back` steps up one. |

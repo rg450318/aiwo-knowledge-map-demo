@@ -47,7 +47,7 @@
   .hit:hover,.hit.sel{background:#141c28}
   .hit .hnum{font-family:var(--serif);font-size:11px;color:var(--faint);flex:none;min-width:34px}
   .hit .htitle{font-size:12.5px;line-height:1.35}
-  .hit.warn .htitle{color:var(--warnNode)}
+  .hit .sub,.lnk .sub{font-size:10.5px;color:var(--faint);white-space:nowrap}
   .hint{font-size:11px;color:var(--faint);margin-top:9px;line-height:1.5}
 
   .pbody{flex:1;overflow:auto;padding:16px 20px}
@@ -59,7 +59,7 @@
 
   .fnum{font-family:var(--serif);font-size:12px;color:var(--mute)}
   .ftitle{font-family:var(--serif);font-size:19px;line-height:1.28;margin:4px 0 10px}
-  .ftitle.warn{color:var(--warnNode)}
+  .fsub{font-size:11px;color:var(--mute);margin:-4px 0 10px;line-height:1.45}
   .fmeta{font-size:11px;color:var(--mute);display:flex;gap:14px;margin-bottom:16px}
   .grp{margin-bottom:15px}
   .glab{font-size:9.5px;letter-spacing:.17em;text-transform:uppercase;color:var(--faint);
@@ -69,8 +69,11 @@
     color:#b8c6d8;display:flex;gap:8px;align-items:baseline}
   .lnk:hover{background:#141c28;color:#fff}
   .lnk .lnum{font-family:var(--serif);font-size:10.5px;color:var(--faint);flex:none;min-width:32px}
-  .lnk.warn{color:var(--warnNode)}
   .empty{font-size:12px;color:var(--faint);line-height:1.6}
+  .nkey{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:9px;padding-top:9px;border-top:1px solid var(--hair);
+    font-size:10.5px;color:var(--mute)}
+  .nkey span{display:flex;align-items:center;gap:5px}
+  .nkey i{display:inline-block;width:8px;height:8px;border-radius:50%}
 
   .legend{border-top:1px solid var(--hair);padding:14px 20px}
   .lrow{display:flex;align-items:center;gap:9px;font-size:11px;color:var(--mute);
@@ -145,7 +148,7 @@
     <div class="legend" id="legend"></div>
     <div class="foot">
       Derived structure only &mdash; section titles, typed links and term frequencies.
-      No manual prose is included.
+      Safety callouts carry their level, page and a gloss in our own words. No manual prose is included.
     </div>
   </div>
 
@@ -169,15 +172,25 @@ const EDGE = {
   hierarchy:     {c:"#93a1b3", label:"Hierarchy",     w:1.25, a:.34},
   crossref:      {c:"#4aa3e0", label:"Cross-reference",w:1.25, a:.50},
   lsa_similar:   {c:"#43c9a8", label:"LSA similarity", w:1.10, a:.34},
-  shared_hazard: {c:"#e8a33d", label:"Shared hazard",  w:1.15, a:.40},
+  hazard_type:   {c:"#e8a33d", label:"Same hazard type", w:1.05, a:.34},
   warns:         {c:"#e8584f", label:"Warns",          w:1.45, a:.62},
 };
-const ORDER = ["warns","hierarchy","crossref","shared_hazard","lsa_similar"];
+const ORDER = ["warns","hierarchy","crossref","hazard_type","lsa_similar"];
+// A warning node is one safety callout box, coloured by the signal level Ponsse
+// prints beside it. A hazard-type node is the category several boxes share.
+const LEVEL = {DANGER:"#ff5a4f", WARNING:"#ff9a3c", CAUTION:"#f0cf55", NOTE:"#9fb2c8", UNMARKED:"#9fb2c8"};
+const TYPE_C = "#e8a33d";
+const isW = n => n.kind==="warning", isT = n => n.kind==="hazard_type";
+const nodeC = n => isW(n) ? (LEVEL[n.level]||LEVEL.NOTE) : isT(n) ? TYPE_C : null;
+const levelWord = n => (n.level||"").charAt(0) + (n.level||"").slice(1).toLowerCase();
+// what a warning is called: its gloss (our words), else its type
+const wTitle = n => n.gloss || n.title;
+const wSub = n => `${levelWord(n)} · p. ${(n.pages||[]).join(", ")}`;
 
 let cur = -1, DATA, N = [], E = [], adj = [];
-// R node ids carry a "[WARN] " prefix, and some headings wrap onto a second
-// line, leaving a dangling "(optional" or "(machine equipped with".
-const cleanTitle = t => (t||"").replace(/^\[WARN\]\s*/, "").replace(/\s*\([^)]*$/, "");
+// R node ids carry a "[WARN] " or "[TYPE] " prefix, and some headings wrap onto a
+// second line, leaving a dangling "(optional" or "(machine equipped with".
+const cleanTitle = t => (t||"").replace(/^\[(WARN|TYPE)\]\s*/, "").replace(/\s*\([^)]*$/, "");
 function build(){
   N = DATA.nodes.map((d,i)=>({...d, i, title: cleanTitle(d.title),
         x:0, y:0, vx:0, vy:0, fx:0, fy:0, born:0, on:false}));
@@ -185,7 +198,8 @@ function build(){
   adj = N.map(()=>[]);
   E.forEach((e,k)=>{ adj[e.s].push({o:e.t,k,type:e.type}); adj[e.t].push({o:e.s,k,type:e.type}); });
 }
-const nHaz = () => N.filter(n=>n.kind==="warning").length;
+const nHaz = () => N.filter(isW).length;
+const nTyp = () => N.filter(isT).length;
 
 const off = new Set();                       // edge types toggled off
 let focusIdx = null, trail = [], hoverIdx = null;
@@ -234,16 +248,15 @@ function renderManuals(){
 function header(){
   const m = DATA.meta, h = nHaz();
   document.getElementById("psub").innerHTML =
-    `<b style="color:var(--ink);font-weight:500">${esc(MANUALS[cur].label)}</b> &middot; ${m.n_nodes-h} sections` +
-    (h ? ` and ${h} hazard types` : "") + ` &middot; ${m.n_edges} typed links, derived automatically from the ${m.pages}-page manual.`;
+    `<b style="color:var(--ink);font-weight:500">${esc(MANUALS[cur].label)}</b> &middot; ${m.n_nodes-h-nTyp()} sections` +
+    (h ? `, ${h} safety warnings in ${nTyp()} hazard types` : "") + ` &middot; ${m.n_edges} typed links, derived automatically from the ${m.pages}-page manual.`;
 }
 // how this manual's hazards were found (set by the pipeline's convention detector)
 const convNote = () => DATA.meta.warning_convention === "untitled"
   ? `<div class="note" style="color:#9fb6cc;background:rgba(74,163,224,.06);border-color:rgba(74,163,224,.22)">
-     This manual's safety callouts carry no hazard titles, so each hazard type was read from the
+     This manual's safety callouts carry no hazard titles, so each one's hazard type was read from the
      callout's own wording: ${DATA.meta.n_hazard_callouts} of ${DATA.meta.n_callouts} callouts name one.</div>` : "";
-const HAZ_NOTE = `<div class="note">No hazard warnings were detected here. This manual doesn't write its
-  warnings as the all-caps &ldquo;&hellip; HAZARD&rdquo; headings the pipeline looks for, so they are
+const HAZ_NOTE = `<div class="note">No safety callouts were detected here, so hazards are
   missing from the map, not from the manual.</div>`;
 
 /* ============================ view ============================ */
@@ -350,8 +363,9 @@ function step(){
     }
   }
 }
-const rad = n => n.kind==="warning" ? 7.2 + Math.min(n.deg,14)*.30
-                                    : 4.4 + Math.min(n.deg,18)*.42;
+const rad = n => isT(n) ? 7.6 + Math.min(n.deg,14)*.32
+               : isW(n) ? 5.6 + Math.min(n.deg,8)*.30
+                        : 4.4 + Math.min(n.deg,18)*.42;
 
 /* ============================ camera ============================ */
 function fit(){
@@ -402,7 +416,7 @@ function draw(){
     const f = fade(n,now);
     const isF = n.i===focusIdx, isH = n.i===hoverIdx;
     const dim = hi!==null && !near.has(n.i);
-    const base = n.kind==="warning" ? "#ff6b60" : isF ? "#ffffff" : "#b9cade";
+    const base = nodeC(n) || (isF ? "#ffffff" : "#b9cade");
     ctx.globalAlpha = f * (dim ? .26 : 1);
 
     const gr = ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,r*(isF?5.2:3.5));
@@ -411,8 +425,14 @@ function draw(){
     ctx.fillStyle = gr;
     ctx.beginPath(); ctx.arc(p.x,p.y,r*(isF?5.2:3.5),0,6.2832); ctx.fill();
 
-    ctx.fillStyle = base;
-    ctx.beginPath(); ctx.arc(p.x,p.y,r*(isF?1.32:1),0,6.2832); ctx.fill();
+    if (isT(n)){                                   // a type hub is a ring: a category, not a box
+      ctx.strokeStyle = base; ctx.lineWidth = 2.2;
+      ctx.fillStyle = "rgba(8,11,17,.9)";
+      ctx.beginPath(); ctx.arc(p.x,p.y,r*(isF?1.32:1),0,6.2832); ctx.fill(); ctx.stroke();
+    } else {
+      ctx.fillStyle = base;
+      ctx.beginPath(); ctx.arc(p.x,p.y,r*(isF?1.32:1),0,6.2832); ctx.fill();
+    }
     if (isF || isH){
       ctx.strokeStyle = hexA("#ffffff", isF?.92:.55);
       ctx.lineWidth = isF?2.1:1.3;
@@ -427,7 +447,7 @@ function draw(){
   for (const n of live){
     const isF = n.i===focusIdx, isH = n.i===hoverIdx;
     const nb = hi!==null && near.has(n.i);
-    const hub = (n.kind==="warning" && cam.k>.5) || (focusIdx===null && n.deg>=11);
+    const hub = (isT(n) && cam.k>.5) || (focusIdx===null && n.deg>=11);
     if (!(isF||isH||nb||hub)) continue;
     cand.push({n, isF, isH, nb, pr: isF?3 : isH?2 : nb?1 : 0});
   }
@@ -454,7 +474,7 @@ function draw(){
     ctx.globalAlpha = fade(n,now) * (c.isF?1 : c.isH?.96 : c.nb?.80 : .55);
     ctx.fillStyle = "rgba(8,11,17,.82)";
     ctx.fillRect(box.x0, box.y0, box.x1-box.x0, box.y1-box.y0);
-    ctx.fillStyle = n.kind==="warning" ? "#ff8a80" : c.isF ? "#ffffff" : "#9fb2c8";
+    ctx.fillStyle = nodeC(n) || (c.isF ? "#ffffff" : "#9fb2c8");
     ctx.fillText(txt, p.x, y);
     ctx.globalAlpha = 1;
   }
@@ -462,7 +482,7 @@ function draw(){
 const fade = (n,now) => Math.min(1,(now-n.born)/420);
 const hexA = (h,a)=>{ const c=h.replace("#",""); const v=parseInt(c,16);
   return `rgba(${(v>>16)&255},${(v>>8)&255},${v&255},${a})`; };
-const short = (n,m)=>{ const t = n.kind==="warning" ? n.title : (n.num? n.num+" "+n.title : n.title);
+const short = (n,m)=>{ const t = isW(n) ? wTitle(n) : isT(n) ? n.title : (n.num? n.num+" "+n.title : n.title);
   return t.length>m ? t.slice(0,m-1).trimEnd()+"…" : t; };
 
 function loop(){
@@ -473,7 +493,9 @@ function loop(){
 
 /* ============================ search ============================ */
 function score(n,q){
-  const t = (n.title||"").toLowerCase(), num = (n.num||"");
+  // a warning is searchable by its gloss, its type(s) and its level ("danger")
+  const t = (isW(n) ? [wTitle(n), ...(n.haz||[]), n.level||""].join(" ") : (n.title||"")).toLowerCase();
+  const num = (n.num||"");
   let s = 0;
   if (t === q) s += 120;
   if (t.startsWith(q)) s += 60;
@@ -487,9 +509,13 @@ function score(n,q){
     else if (w.startsWith(q)) s += 12 - Math.min(i,14)*0.5;
     else if (q.length>=5 && w.includes(q)) s += 4;
   }
-  if (n.kind==="warning") s *= 1.18;
+  if (isW(n)) s *= 1.12;
+  if (isT(n)) s *= 1.18;
   return s;
 }
+// one line for a hit or a link: the glyph, then the name
+const glyph = n => isW(n) ? `<span style="color:${nodeC(n)}">&#9888;</span>` : isT(n) ? `<span style="color:${TYPE_C}">&#9678;</span>` : (n.num||"");
+const nameOf = n => isW(n) ? `${esc(wTitle(n))} <span class="sub">${esc(wSub(n))}</span>` : esc(n.title);
 function runSearch(){
   const q = document.getElementById("q").value.trim().toLowerCase();
   const box = document.getElementById("hits");
@@ -509,9 +535,9 @@ function runSearch(){
     return;
   }
   box.innerHTML = (hits.length ? hits.map(h=>
-    `<div class="hit${h.n.kind==="warning"?" warn":""}" data-i="${h.n.i}">
-       <span class="hnum">${h.n.kind==="warning"?"&#9888;":(h.n.num||"")}</span>
-       <span class="htitle">${esc(h.n.title)}</span></div>`).join("")
+    `<div class="hit" data-i="${h.n.i}">
+       <span class="hnum">${glyph(h.n)}</span>
+       <span class="htitle" style="${nodeC(h.n)?`color:${nodeC(h.n)}`:""}">${nameOf(h.n)}</span></div>`).join("")
     : '<div class="hint">Nothing in this manual matches that.</div>') + also;
   [...box.querySelectorAll(".hit")].forEach(el=>
     el.onclick = ()=>{ focusOn(+el.dataset.i); document.getElementById("hint").textContent =
@@ -539,9 +565,11 @@ function renderPanel(){
     html += '<div class="crumbs">' + trail.slice(-4).map((t,k)=>
       `<span class="crumb" data-b="${k}">${esc(short(N[t],26))}</span>`).join("") + "</div>";
   }
-  html += `<div class="fnum">${n.kind==="warning" ? "Hazard type" : (n.num||"")}</div>
-    <div class="ftitle${n.kind==="warning"?" warn":""}">${esc(n.title)}</div>
-    <div class="fmeta"><span>${n.deg} link${n.deg===1?"":"s"}</span>
+  const eyebrow = isW(n) ? `Safety callout &middot; ${esc(wSub(n))}` : isT(n) ? `Hazard type &middot; ${n.n||0} warning${n.n===1?"":"s"}` : (n.num||"");
+  html += `<div class="fnum">${eyebrow}</div>
+    <div class="ftitle" style="${nodeC(n)?`color:${nodeC(n)}`:""}">${esc(isW(n) ? wTitle(n) : n.title)}</div>` +
+    (isW(n) && n.gloss ? `<div class="fsub">${esc((n.haz||[]).join(" + "))}${n.gloss ? " &middot; gloss in our words, not the manual's" : ""}</div>` : "") +
+    `<div class="fmeta"><span>${n.deg} link${n.deg===1?"":"s"}</span>
       ${n.chap?`<span>Chapter ${esc(n.chap)}</span>`:""}
       <span>${vis.size-1} in view</span>${nHaz() ? "" : "<span>hazards not detected</span>"}</div>`;
 
@@ -550,9 +578,9 @@ function renderPanel(){
     html += `<div class="grp"><div class="glab">
         <span class="swatch" style="background:${EDGE[t].c}"></span>${EDGE[t].label} &middot; ${g.length}</div>` +
       g.sort((a,b)=>(a.num||"zz").localeCompare(b.num||"zz")).map(m=>
-        `<div class="lnk${m.kind==="warning"?" warn":""}" data-i="${m.i}">
-           <span class="lnum">${m.kind==="warning"?"&#9888;":(m.num||"")}</span>
-           <span>${esc(m.title)}</span></div>`).join("") + `</div>`;
+        `<div class="lnk" style="${nodeC(m)?`color:${nodeC(m)}`:""}" data-i="${m.i}">
+           <span class="lnum">${glyph(m)}</span>
+           <span>${nameOf(m)}</span></div>`).join("") + `</div>`;
   });
   if (!Object.keys(groups).length)
     html += '<div class="empty">No links of the enabled types.</div>';
@@ -568,10 +596,13 @@ function renderPanel(){
 function renderLegend(){
   const counts = {}; ORDER.forEach(t=>counts[t]=0);
   E.forEach(e=>{ if(vis.has(e.s)&&vis.has(e.t)) counts[e.type]++; });
+  const key = nHaz() ? `<div class="nkey">` + ["DANGER","WARNING","CAUTION","NOTE"].map(l =>
+      `<span><i style="background:${LEVEL[l]}"></i>${l.charAt(0)+l.slice(1).toLowerCase()}</span>`).join("") +
+      `<span><i style="border:2px solid ${TYPE_C};background:none"></i>Hazard type</span></div>` : "";
   document.getElementById("legend").innerHTML = ORDER.map(t=>
     `<div class="lrow${off.has(t)?" off":""}" data-t="${t}">
        <span class="swatch" style="background:${EDGE[t].c}"></span>
-       <span>${EDGE[t].label}</span><span class="n">${counts[t]}</span></div>`).join("");
+       <span>${EDGE[t].label}</span><span class="n">${counts[t]}</span></div>`).join("") + key;
   [...document.querySelectorAll(".lrow")].forEach(el => el.onclick = ()=>{
     const t = el.dataset.t; off.has(t) ? off.delete(t) : off.add(t);
     focusIdx===null ? showWhole() : focusOn(focusIdx,false);
@@ -597,8 +628,9 @@ function hover(p){
   hoverIdx = n ? n.i : null;
   cv.style.cursor = n ? "pointer" : "grab";
   if (n){
-    const t = n.kind==="warning" ? "Hazard type" : (n.num||"");
-    tip.innerHTML = `<span class="tnum">${t} &middot; ${n.deg} links</span>${esc(n.title)}` +
+    const t = isW(n) ? wSub(n) : isT(n) ? `Hazard type · ${n.n||0} warnings` : (n.num||"");
+    tip.innerHTML = `<span class="tnum">${esc(t)} &middot; ${n.deg} links</span>${esc(isW(n) ? wTitle(n) : n.title)}` +
+      (isW(n) && n.gloss ? `<span class="tterms">${esc((n.haz||[]).join(" + "))}</span>` : "") +
       ((n.terms&&n.terms.length)?`<span class="tterms">${esc(n.terms.slice(0,7).join(" · "))}</span>`:"");
     tip.style.opacity = 1;
     tip.style.left = Math.min(W-280, p.x+16)+"px";
