@@ -63,7 +63,7 @@ being joined directly as if they warned of the same thing.
 Structure derived from Ponsse operator manuals, used within the AiWo research
 consortium. **The manuals themselves are not included and not redistributed.**
 This page carries only section titles, the typed links between them,
-per-section term lists for the search box, and for each safety callout its
+per-section term lists for the search box, the page each section opens on, and for each safety callout its
 signal level, page numbers and a gloss written by us. No prose from any manual
 appears in this repository.
 
@@ -73,7 +73,8 @@ appears in this repository.
 | --- | --- |
 | Manual pills | Switch manual; map, search, legend and panel all follow. |
 | Search | Two letters or more; matches titles, section numbers, section vocabulary, and a warning's gloss, type and level ("danger"). "Also in" shows strong matches in the other manuals and switches to them in one click. |
-| Click a dot | Opens that node's two-hop neighbourhood. |
+| Click a dot | Opens that node's two-hop neighbourhood. Hovering shows its page. |
+| Double-click a dot, or `Zoom in` | Zooms the map in on that node until the labels read easily; `Fit` reframes. |
 | Legend | Click an edge type to filter it from map and panel; click "Hazard type" in the key to hide the ring nodes. |
 | Breadcrumbs | Retrace your path; `Back` steps up one. |
 | Drag / scroll | Move a node, pan the background, zoom, `Fit` to reframe. |

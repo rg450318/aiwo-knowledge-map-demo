@@ -161,6 +161,7 @@
       <button class="btn" id="bWhole">Whole manual</button>
       <button class="btn" id="bBack">&larr; Back</button>
       <button class="btn" id="bFit">Fit</button>
+      <button class="btn" id="bZoom" title="Zoom in on the open node (or double-click any dot)">Zoom in</button>
     </div>
     <div id="tip"></div>
     <div id="status"></div>
@@ -306,6 +307,7 @@ function commit(whole){
   });
   visE = E.filter(e => !off.has(e.type) && vis.has(e.s) && vis.has(e.t));
   alpha = whole ? 1 : .8; autoFit = true;
+  document.getElementById("bZoom").style.display = focusIdx===null ? "none" : "";
   renderPanel(); renderLegend(); status();
 }
 
@@ -386,6 +388,15 @@ function fit(){
   camT.y = top + (H-top)/2 - (y0+y1)/2*camT.k;
 }
 const toScreen = n => ({x:n.x*cam.k+cam.x, y:n.y*cam.k+cam.y});
+// zoom the camera onto one node, close enough that its label and its neighbours' read easily
+function zoomTo(n){
+  if (!n || !n.on) return;
+  autoFit = false;
+  const small = Math.min(W, H) < 560, top = small ? 44 : 0;
+  camT.k = 2.4;
+  camT.x = W/2 - n.x*camT.k;
+  camT.y = top + (H-top)/2 - n.y*camT.k;
+}
 
 /* ============================ draw ============================ */
 function draw(){
@@ -546,7 +557,7 @@ function runSearch(){
     : '<div class="hint">Nothing in this manual matches that.</div>') + also;
   [...box.querySelectorAll(".hit")].forEach(el=>
     el.onclick = ()=>{ focusOn(+el.dataset.i); document.getElementById("hint").textContent =
-      `${TAP[0].toUpperCase() + TAP.slice(1)} any dot to open the map behind it.`; afterPick(); });
+      `${TAP[0].toUpperCase() + TAP.slice(1)} any dot to open the map behind it; double-${TAP} to zoom in on it.`; afterPick(); });
   [...box.querySelectorAll(".also .mpill")].forEach(el=> el.onclick = ()=>loadManual(+el.dataset.m));
 }
 const esc = s => s.replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -570,7 +581,8 @@ function renderPanel(){
     html += '<div class="crumbs">' + trail.slice(-4).map((t,k)=>
       `<span class="crumb" data-b="${k}">${esc(short(N[t],26))}</span>`).join("") + "</div>";
   }
-  const eyebrow = isW(n) ? `Safety callout &middot; ${esc(wSub(n))}` : isT(n) ? `Hazard type &middot; ${n.n||0} warning${n.n===1?"":"s"}` : (n.num||"");
+  const eyebrow = isW(n) ? `Safety callout &middot; ${esc(wSub(n))}` : isT(n) ? `Hazard type &middot; ${n.n||0} warning${n.n===1?"":"s"}`
+                : (n.num||"") + (n.page ? ` &middot; p. ${n.page}` : "");
   html += `<div class="fnum">${eyebrow}</div>
     <div class="ftitle" style="${nodeC(n)?`color:${nodeC(n)}`:""}">${esc(isW(n) ? wTitle(n) : n.title)}</div>` +
     (isW(n) && n.gloss ? `<div class="fsub">${esc((n.haz||[]).join(" + "))}${n.gloss ? " &middot; gloss in our words, not the manual's" : ""}</div>` : "") +
@@ -635,7 +647,7 @@ function hover(p){
   hoverIdx = n ? n.i : null;
   cv.style.cursor = n ? "pointer" : "grab";
   if (n){
-    const t = isW(n) ? wSub(n) : isT(n) ? `Hazard type · ${n.n||0} warnings` : (n.num||"");
+    const t = isW(n) ? wSub(n) : isT(n) ? `Hazard type · ${n.n||0} warnings` : (n.num||"") + (n.page ? ` · p. ${n.page}` : "");
     tip.innerHTML = `<span class="tnum">${esc(t)} &middot; ${n.deg} links</span>${esc(isW(n) ? wTitle(n) : n.title)}` +
       (isW(n) && n.gloss ? `<span class="tterms">${esc((n.haz||[]).join(" + "))}</span>` : "") +
       ((n.terms&&n.terms.length)?`<span class="tterms">${esc(n.terms.slice(0,7).join(" · "))}</span>`:"");
@@ -717,6 +729,9 @@ document.getElementById("bBack").onclick = ()=>{
   focusOn(trail.pop(), false);
 };
 document.getElementById("bFit").onclick = fit;
+document.getElementById("bZoom").onclick = ()=>{ if (focusIdx!==null) zoomTo(N[focusIdx]); };
+// double-click (or double-tap) a dot: zoom in on it
+cv.addEventListener("dblclick", ev=>{ const p = local(ev), n = pick(p.x, p.y); if (n) zoomTo(n); });
 
 /* ============================ go ============================ */
 resize();
